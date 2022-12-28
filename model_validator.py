@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-version='1.0.1'
+version='1.0.3'
 
 import os
 from datetime import datetime
@@ -390,7 +390,7 @@ def run_prospector(db,i,o,parameters,name,look):
   output=open(look,"r")
   process=os.popen("ps -u {} --sort +start_time".format(os.getlogin())).read()
   table="{}/hmm-prospector/table2.csv".format(o)
-  while "hmm-prospector." in process and "Done." not in output.read() and not os.path.isfile(table):
+  while "hmm-prospector." in process and "Done." not in output.read():
     output.close()
     output=open(look,"r")
     process=os.popen("ps -u {} --sort +start_time".format(os.getlogin())).read()
@@ -496,11 +496,11 @@ def list_HMMs(name,match,o,positive):
   else:
     try:
       if match=="Match":
-        listHMMs=os.path.join(o,name,"matchedHMMs")
+        listHMMs=os.path.join(o,name,"match_HMMs_list.txt")
       elif match=="Valid" or match=="Invalid":
         if not os.path.isdir(os.path.join(o,"results")):
           os.mkdir(os.path.join(o,"results"))
-        listHMMs=os.path.join(o,"results","{}HMMs".format(match.lower()))
+        listHMMs=os.path.join(o,"results","{}_HMMs_list.txt".format(match.lower()))
       mfile=open(listHMMs,"w")
       mfile.write('\n'.join(positive))
       mfile.close()
@@ -789,23 +789,13 @@ def get_vir_db(models,path):
   else:
     return vir_db
 
-def get_score(name,file,mode):
-  scores=[]
-  lines=str(subprocess.check_output("grep ' {} ' {}".format(name,file), shell=True)).split("\\n")
-  if "'" in lines:
-    lines.remove("'")
-  for line in lines:
-    columns=line.split(" ")
-    while '' in columns:
-      columns.remove('')
-    while '-' in columns:
-      columns.remove('-')
-    if len(columns)>=4:
-      scores.append(columns[3])
+def get_score(name,file,mode,index):
   if mode=="min":
-    return min(scores)
+    complement="head -n1"
   elif mode=="max":
-    return min(scores)
+    complement="tail -n1"
+  score=float(subprocess.check_output("grep '{}' {} | cut -f{} | sort -n | {}".format(name,file,index,complement), shell=True))
+  return score
 
 def compare_scores(cell_org,vir,pt,i,o,name):
   valid=True
@@ -816,53 +806,55 @@ def compare_scores(cell_org,vir,pt,i,o,name):
   indexes.append(headers.index("Score")+1)
   vir_hmm=open(i,"r").read()
   new_hmm=''
-#  file="{}/vir/{}/hmmsearch_results/final.tab".format(param["out"],name)
-#  mode="min"
-#  score=get_score(name,file,mode)
   try:
-    V = float(str(subprocess.check_output("grep '{}' {} | cut -f{} | sort | head -n 1".format(name,vir,indexes[1]), shell=True)).replace("b'","").replace("\\n'",""))  
-    #V = float(score)
+    V = get_score(name,vir,"min",indexes[1])
   except Exception as e: 
-    log.write("All '{}' vir matches were bellow cutoff score!\n".format(name))
-    print("All '{}' vir matches were bellow cutoff score!".format(name))
+    log.write("All '{}' vir matches were below cutoff score!\n".format(name))
+    print("All '{}' vir matches were below cutoff score!".format(name))
     valid=False
   else:
-    #file="{}/cell_org/hmm-prospector/hmmsearch_results/final.tab".format(param["out"])
-    #mode="max"
-    #score=get_score(name,file,mode)
     try:
-      C = float(str(subprocess.check_output("grep '{}' {} | cut -f{} | sort -rn | head -n 1".format(name,cell_org,indexes[1]), shell=True)).replace("b'","").replace("\\n'",""))
-      #C = float(score)
+      C = get_score(name,cell_org,"max",indexes[1])
     except Exception as e: 
-      log.write("All '{}' cell_org matches were bellow cutoff score!\n".format(name))
-      print("All '{}' cell_org matches were bellow cutoff score!".format(name))
+      log.write("All '{}' cell_org matches were below cutoff score!\n".format(name))
+      print("All '{}' cell_org matches were below cutoff score!".format(name))
       valid=False
     else:
       P = float(V) * pt/100
       if not C < P:
+        csv.write("{}\t{}\t{}\t{}\tFalse\t\t\t\t\n".format(name,V,C,P))
         log.write("'{}' maximum score for cell_org is less than or equal to his minimum score for vir!\n".format(name))
         print("'{}' maximum score for cell_org is less than or equal to his minimum score for vir!".format(name))
         log.write("query_pHMM={}\tmin_vir_score={:.1f}\tmax_cell_org_score={:.1f}\tpt%_min_vir_score={:.1f}\n".format(name,float(V),float(C),float(P)))
         valid=False
       else:
-        cutoff = (pt/100 * (V - C)) + C
-        log.write("query_pHMM={}\tmin_vir_score={:.1f}\tmax_cell_org_score={:.1f}\t_min_vir_score={:.1f}\tnew_cutoff_score={:.1f}\n".format(name,float(V),float(C),float(P),cutoff))
+        newcutoff = (pt/100 * (V - C)) + C
+        log.write("query_pHMM={}\tmin_vir_score={:.1f}\tmax_cell_org_score={:.1f}\tpt%_min_vir_score={:.1f}\n".format(name,float(V),float(C),float(P)))
         if vir_hmm=='':
-          log.write("Profile HMM file '{}.hmm' with new cutoff score was not created!\n".format(name))
-          print("Profile HMM file '{}.hmm' with new cutoff score was not created!".format(name))
+          log.write("Profile HMM file '{}.hmm' in cell_org is empty!\n".format(name))
+          print("Profile HMM file '{}.hmm' in cell_org is empty!".format(name))
           valid=False
         else:
-          new_hmm+=vir_hmm.split("CUTOFF SCORE")[0]+"CUTOFF SCORE    "+str(cutoff)+"\nTAXON"+vir_hmm.split("TAXON")[-1]
-          try:
-            out=open(o,"w")
-            out.write("")
-          except:
-            log.write("Profile HMM file '{}.hmm' with new cutoff score was not created!\n".format(name))
-            print("Profile HMM file '{}.hmm' with new cutoff score was not created!".format(name))
+          oldcutoff=float(vir_hmm.split("CUTOFF SCORE")[-1].split("\n")[0].strip())
+          log.write("query_pHMM={}\told_cutoff_score={:.1f}\tnew_cutoff_score={:.1f}\n".format(name,oldcutoff,newcutoff))
+          if newcutoff<oldcutoff:
+            csv.write("{}\t{}\t{}\t{}\tTrue\t{}\t{}\t{}\tFalse\n".format(name,V,C,P,V-C,newcutoff,oldcutoff))
+            print("Something is wrong! '{}' new cutoff score is lower than the old cutoff score!".format(name))
+            log.write("Something is wrong! '{}' new cutoff score is lower than the old cutoff score!\n".format(name))
             valid=False
           else:
-            out.write(new_hmm)
-            out.close()
+            csv.write("{}\t{}\t{}\t{}\tTrue\t{}\t{}\t{}\tTrue\n".format(name,V,C,P,V-C,newcutoff,oldcutoff))
+            new_hmm+=vir_hmm.split("CUTOFF SCORE")[0]+"CUTOFF SCORE    "+"{:.1f}".format(newcutoff)+"\nTAXON"+vir_hmm.split("TAXON")[-1]
+            try:
+              out=open(o,"w")
+              out.write("")
+            except:
+              log.write("Profile HMM file '{}.hmm' with new cutoff score was not created!\n".format(name))
+              print("Profile HMM file '{}.hmm' with new cutoff score was not created!".format(name))
+              valid=False
+            else:
+              out.write(new_hmm)
+              out.close()
   return valid
   
 def validate_recall(path,name,fasta,pd):
@@ -889,6 +881,7 @@ elif arguments.h == True:
 elif arguments.version == True:
     print(version) 
 else:
+    valid=True
     if arguments.conf==None:
         args={k: v for k, v in vars(arguments).items() if v is not None and v is not True and v is not False}     
     else:
@@ -983,6 +976,11 @@ else:
                   if call_fetch(name,o,i,match,positive,True):
                     if os.path.isfile("{}/results/validHMMs".format(param['out'])):
                       validated.extend(open("{}/results/validHMMs".format(param['out']),"r").read().split("\n"))
+                      for model in validated:
+                        log.write("\n{}\n".format(model))
+                        log.write("'{}' didn't match cell_org!\n".format(model))
+                        print("Profile HMM '{}' is valid!".format(model))
+                        log.write("Profile HMM '{}' is valid!\n".format(model))
                     log.close()
                     log=open(os.path.join(param["out"], 'file.log'),'a')
                     log.write("\n")
@@ -1001,8 +999,13 @@ else:
                       else:
                         log=open(os.path.join(param["out"], 'file.log'),'a')
                         print("\n")
+                        csv=open(os.path.join(param['out'],'scores.csv'),"w")
+                        csv.write("name\tV\tC\tP\tC<P\tV-C\tnew_cutoff_score\told_cutoff_score\tnew>old\n")
+                        csv.close()
                         for name in sorted(list(vir_db.keys())):
+                          csv.close()
                           log.write("\n{}\n".format(name))
+                          log.write("'{}' match cell_org!\n".format(name))
                           if not name=="'":
                             try:
                               os.chdir(os.path.join(param['out'],'vir'))
@@ -1033,7 +1036,9 @@ else:
                                   pt=param['pt']
                                   i=os.path.join(param['out'],'cell_org','models','{}.hmm'.format(name))
                                   o=os.path.join(os.path.join(param['out'],'new_scores','{}.hmm'.format(name)))
+                                  csv=open(os.path.join(param['out'],'scores.csv'),"a")
                                   if compare_scores(cell_org,vir,pt,i,o,name):
+                                    csv.close()
                                     log.close()
                                     log=open(os.path.join(param["out"], 'file.log'),'a')
                                     if len(open(o,"r").read())==0 or not os.path.isfile(o):
