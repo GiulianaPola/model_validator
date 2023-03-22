@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 
-version='1.0.6'
+version='1.0.7'
 
 import os
 from datetime import datetime
 import argparse
-from argparse import RawTextHelpFormatter
 import sys
 import subprocess
 from Bio import Entrez
@@ -18,6 +17,7 @@ error=[]
 taxonomy=dict()
 start_time = datetime.now()
 call=os.path.abspath(os.getcwd())
+finalresults=dict()
 
 print('model_validator v{} - a tool to validate profile HMMs and adjust their cutoff score.\n'.format(version))
 
@@ -660,7 +660,8 @@ def fetch_hmm(namelist,d,o):
           valid=False
         else:
           try:
-            selectedfile=open(os.path.join(o, 'selected.hmm'),'w')
+            filename=os.path.basename(os.path.normpath(o))
+            selectedfile=open(os.path.join(o, '{}.hmm'.format(filename)),'w')
             selectedfile.write("")
           except Exception as e: 
             log.write("{}\n".format(e))
@@ -794,6 +795,7 @@ def get_vir_db(table,folder,models):
   prot_dir=''
   headers=str(subprocess.check_output("head {} -n 1".format(table), shell=True))[2:-1].replace("\\n","").split("\\t")
   taxons=str(subprocess.check_output("cut -f{} {} | sort -u".format(headers.index("Taxon")+1,table), shell=True))[2:-1].split("\\n")
+  names=str(subprocess.check_output("grep 'vHMM_' {} | cut -f{} | sort -u".format(table,headers.index("HMM")+1), shell=True))[2:-1].split("\\n")
   taxons.remove("")
   taxons.remove("Taxon")
   for taxon in taxons:
@@ -988,7 +990,12 @@ def compare_scores(cell_org,vir,pt,i,o,name):
     V = get_score(name,vir,"min",indexes[1])
   except Exception as e: 
     log.write("INVALID: No '{}' vir matches that satisfy reporting thresholds!\n".format(name))
-    print("INVALID: No '{}' vir matches that satisfy reporting thresholds!".format(name))
+    ##print("INVALID: No '{}' vir matches that satisfy reporting thresholds!".format(name))
+    key="invalidated because had no vir matches"
+    if not key in finalresults.keys():
+      finalresults[key]=[name]
+    elif not name in finalresults[key]:
+      finalresults[key].append(name)
     valid=False
   else:
     if V<oldcutoff:
@@ -999,7 +1006,12 @@ def compare_scores(cell_org,vir,pt,i,o,name):
       C = get_score(name,cell_org,"max",indexes[1])
     except Exception as e: 
       log.write("INVALID: No '{}' cell_org matches that satisfy reporting thresholds!\n".format(name))
-      print("INVALID: No '{}' cell_org matches that satisfy reporting thresholds!".format(name))
+      ##print("INVALID: No '{}' cell_org matches that satisfy reporting thresholds!".format(name))
+      key="invalidated because had no cell_org matches"
+      if not key in finalresults.keys():
+        finalresults[key]=[name]
+      elif not name in finalresults[key]:
+        finalresults[key].append(name)
       invalidated.append(name)
       valid=False
     else:
@@ -1010,7 +1022,12 @@ def compare_scores(cell_org,vir,pt,i,o,name):
       if C>V:
         csv.write("{}\t{}\t{}\t\tFalse\t\t\t\t\n".format(name,V,C))
         log.write("INVALID: '{}' min vir score < max cell_org score!\n".format(name))
-        print("INVALID: '{}' min vir score < max cell_org score!".format(name))
+        ##print("INVALID: '{}' min vir score < max cell_org score!".format(name))
+        key="invalidated because the highest Cscore > lowest Vscore"
+        if not key in finalresults.keys():
+          finalresults[key]=[name]
+        elif not name in finalresults[key]:
+          finalresults[key].append(name)
         log.write("query_pHMM={}\tmin_vir_score={:.1f}\tmax_cell_org_score={:.1f}\n".format(name,float(V),float(C)))
         valid=False
       else:
@@ -1018,7 +1035,12 @@ def compare_scores(cell_org,vir,pt,i,o,name):
         if C>P:
           csv.write("{}\t{}\t{}\t{}\tFalse\t\t\t\t\n".format(name,V,C,P))
           log.write("INVALID: '{}' {:.1f}% (-pt) of min vir score < max cell_org score!\n".format(name,pt))
-          #print("INVALID: '{}' {:.1f}% (-pt) of min vir score < max cell_org score!".format(name,pt))
+          key="invalidated because the highest Cscore > (pt%) x lowest Vscore"
+          if not key in finalresults.keys():
+            finalresults[key]=[name]
+          elif not name in finalresults[key]:
+            finalresults[key].append(name)
+          ##print("INVALID: '{}' {:.1f}% (-pt) of min vir score < max cell_org score!".format(name,pt))
           log.write("query_pHMM={}\tmin_vir_score={:.1f}\tmax_cell_org_score={:.1f}\tpt%_min_vir_score={:.1f}\n".format(name,float(V),float(C),float(P)))
           valid=False
         else:
@@ -1059,17 +1081,32 @@ def validate_recall(path,name,fasta,pd):
   valid=True
   match=int(str(subprocess.check_output("wc -l {}/recall/{}/table1.csv".format(path,name), shell=True)).replace("b'","").split()[0])-1
   if match<=0:
-    print("INVALID: '{}' recall didn't have any matches!")
+    #print("INVALID: '{}' recall didn't have any matches!")
     log.write("INVALID: '{}' recall didn't have any matches!\n")
+    key="invalidated because recall < (pd%)"
+    if not key in finalresults.keys():
+      finalresults[key]=[name]
+    elif not name in finalresults[key]:
+      finalresults[key].append(name)
     valid=False
   else:
     total=int(str(subprocess.check_output("grep '>' {}| wc -l".format(fasta), shell=True)).replace("b'","").replace("\\n'","").split()[0])
     if match/total*100<pd:
-      print("INVALID: '{}' recall detection percentage {:.1f}% <= {:.1f}% (-pd)!".format(name,match/total*100,pd))
+      #print("INVALID: '{}' recall detection percentage {:.1f}% <= {:.1f}% (-pd)!".format(name,match/total*100,pd))
       log.write("INVALID: '{}' recall detection percentage {:.1f}% <= {:.1f}% (-pd)!\n".format(name,match/total*100,pd))
+      key="invalidated because recall < (pd%)"
+      if not key in finalresults.keys():
+        finalresults[key]=[name]
+      elif not name in finalresults[key]:
+        finalresults[key].append(name)
       valid=False
     else:
       log.write("'{}' recall detection percentage {:.1f}% > {:.1f}% (-pd)!\n".format(name,match/total*100,pd))
+      key="validated with adjusted cutoff score"
+      if not key in finalresults.keys():
+        finalresults[key]=[name]
+      elif not name in finalresults[key]:
+        finalresults[key].append(name)
   return valid 
 
 if not len(sys.argv)>1:
@@ -1087,7 +1124,7 @@ else:
     if valid:
       valid,param=validate_args(args)
       if valid==False:
-        print("Input parameters are invalid!")
+        print("ERROR: Input parameters are invalid!")
       if valid==True:
         print("Input parameters are valid!")
         os.chdir(param['out'])
@@ -1096,7 +1133,7 @@ else:
           log.write('model_validator v{}\n'.format(version))
         except Exception as e: 
           print(e)
-          print('Log file was not created!')
+          print('ERROR: Log file was not created!')
         else:
           log.write('\nDatetime:\n{}\n'.format(start_time.strftime("%d/%m/%Y, %H:%M:%S")))
           
@@ -1122,9 +1159,11 @@ else:
             os.chdir(os.path.join(param['out'],'cell_org'))
           except Exception as e: 
             print(e)
-            print("cell_org directory wasn't created!")
-            log.write("\ncell_org directory wasn't created!\n")
+            print("ERROR: cell_org directory wasn't created!")
+            log.write("\nERROR: cell_org directory wasn't created!\n")
           else:
+            total=int(str(subprocess.check_output("grep 'NAME' {}| wc -l".format(param['i']), shell=True)).replace("b'","").replace("\\n'","").split()[0])
+            print("{} tested profile HMMs".format(total))
             db=param['cell_org_db']
             i=param['i']
             o=os.path.join(param['out'],"cell_org")
@@ -1135,7 +1174,7 @@ else:
             log.close()
             log=open(os.path.join(param["out"], 'file.log'),'a')
             if run_prospector(db,i,o,param['reads_cell'],name,look,cmd):
-              print("hmm-prospector runtime for {}: {}".format("cell_org",datetime.now()-start))
+              #print("hmm-prospector runtime for {}: {}".format("cell_org",datetime.now()-start))
               log.write("hmm-prospector runtime for {}: {}\n".format("cell_org",datetime.now()-start))
               log.close()
               log=open(os.path.join(param["out"], 'file.log'),'a')
@@ -1146,8 +1185,8 @@ else:
                   os.chdir(os.path.join(param['out'],'results'))
                 except Exception as e: 
                   log.write(e)
-                  print("\nResults directory wasn't created!")
-                  log.write("\nResults directory wasn't created!\n")
+                  print("\nERROR: Results directory wasn't created!")
+                  log.write("\nERROR: Results directory wasn't created!\n")
                 else:
                   print("Results directory was created!")
                   log.write("\nResults directory was created!\n")
@@ -1157,11 +1196,26 @@ else:
                   match="Invalid"
                   positive=[]
                   valid,positive=parse_table(name,o,i,match)
+                  finalresults["positive for OrgCell"]=positive
+                  print("{} positive for OrgCell = invalidated".format(len(set(finalresults["positive for OrgCell"]))))
                   #file="{}/cell_org/hmm-prospector/hmmsearch_results/final.tab".format(param["out"])
                   #positive=get_names(file)
                   if valid and not positive==[]:
                     match=["Invalid","Valid"]
-                    call_fetch(name,o,i,match,positive,True)
+                    if call_fetch(name,o,i,match,positive,True):
+                      if os.path.isfile("{}/results/valid_HMMs_list.txt".format(param['out'])):
+                        validated.extend(open("{}/results/valid_HMMs_list.txt".format(param['out']),"r").read().split("\n"))
+                        for model in validated:
+                          if "vHMM_" in model:
+                            key="negative for OrgCell"
+                            if not key in finalresults.keys():
+                              finalresults[key]=[model]
+                            elif not name in finalresults[key]:
+                              finalresults[key].append(model)
+                            log.write("\n{}\n".format(model))
+                            log.write("'{}' didn't match cell_org!\n".format(model))
+                            log.write("Profile HMM '{}' is valid!\n".format(model))
+                        print("{} negative for OrgCell = validated".format(len(set(finalresults["negative for OrgCell"]))))
               elif param['db_type']=='long':
                 log.close()
                 log=open(os.path.join(param["out"], 'file.log'),'a')
@@ -1172,6 +1226,7 @@ else:
                 match="Match"
                 positive=[]
                 valid,positive=parse_table(name,o,i,match)
+                finalresults["positive for OrgCell"]=positive
                 #file="{}/cell_org/hmm-prospector/hmmsearch_results/final.tab".format(param["out"])
                 #positive=get_names(file)
                 if valid and not positive==[]:
@@ -1180,9 +1235,17 @@ else:
                     if os.path.isfile("{}/results/valid_HMMs_list.txt".format(param['out'])):
                       validated.extend(open("{}/results/valid_HMMs_list.txt".format(param['out']),"r").read().split("\n"))
                       for model in validated:
-                        log.write("\n{}\n".format(model))
-                        log.write("'{}' didn't match cell_org!\n".format(model))
-                        log.write("Profile HMM '{}' is valid!\n".format(model))
+                        if "vHMM_" in model:
+                          key="negative for OrgCell"
+                          if not key in finalresults.keys():
+                            finalresults[key]=[model]
+                          elif not name in finalresults[key]:
+                            finalresults[key].append(model)
+                          log.write("\n{}\n".format(model))
+                          log.write("'{}' didn't match cell_org!\n".format(model))
+                          log.write("Profile HMM '{}' is valid!\n".format(model))
+                      print("{} negative for OrgCell = validated".format(len(set(finalresults["negative for OrgCell"]))))
+                      print("{} positive for OrgCell".format(len(set(finalresults["positive for OrgCell"]))))
                     log.close()
                     log=open(os.path.join(param["out"], 'file.log'),'a')
                     log.write("\n")
@@ -1197,15 +1260,14 @@ else:
                           os.mkdir(os.path.join(param['out'],'vir'))
                       except Exception as e: 
                         print(e)
-                        print("vir directory wasn't created!")
-                        log.write("\nvir directory wasn't created!\n")
+                        print("ERROR: vir directory wasn't created!")
+                        log.write("\nERROR: vir directory wasn't created!\n")
                       else:
                         log=open(os.path.join(param["out"], 'file.log'),'a')
                         csv=open(os.path.join(param['out'],'scores.csv'),"w")
                         csv.write("name\tV\tC\tP\tC<P\tV-C\tnew_cutoff_score\told_cutoff_score\tnew>old\n")
                         csv.close()
                         for name in sorted(list(vir_db.keys())):
-                          print("\n")
                           csv.close()
                           log.write("\n{}\n".format(name))
                           log.write("'{}' match cell_org!\n".format(name))
@@ -1222,8 +1284,8 @@ else:
                               os.chdir(os.path.join(param['out'],'vir'))
                             except Exception as e: 
                               print(e)
-                              print("vir directory wasn't opened!")
-                              log.write("\nvir directory wasn't opened!\n")
+                              print("ERROR: vir directory wasn't opened!")
+                              log.write("\nERROR: vir directory wasn't opened!\n")
                             else:
                               db=vir_db[name]
                               i=os.path.join(param['out'],'cell_org','models','{}.hmm'.format(name))
@@ -1234,7 +1296,7 @@ else:
                               log.close()
                               log=open(os.path.join(param["out"], 'file.log'),'a')
                               if run_prospector(db,i,o,param['reads_vir'],"vir",look,cmd):
-                                print("'{}' hmm-prospector runtime for {}: {}".format(name,"vir",datetime.now()-start))
+                                #print("'{}' hmm-prospector runtime for {}: {}".format(name,"vir",datetime.now()-start))
                                 log.write("'{}' hmm-prospector runtime for {}: {}\n".format(name,"vir",datetime.now()-start))
                                 log.write("'{}' vir results: {}\n".format(name,os.path.join(param["out"],"vir",name)))
                                 log.close()
@@ -1245,8 +1307,8 @@ else:
                                   os.chdir(os.path.join(param['out'],'new_scores'))
                                 except Exception as e: 
                                   print(e)
-                                  print("new_scores directory wasn't created!")
-                                  log.write("\nnew_scores directory wasn't created!\n")
+                                  print("ERROR: new_scores directory wasn't created!")
+                                  log.write("\nERROR: new_scores directory wasn't created!\n")
                                 else:
                                   cell_org="{}/cell_org/hmm-prospector/table1.csv".format(param["out"])
                                   vir="{}/vir/{}/table1.csv".format(param["out"],name)
@@ -1259,8 +1321,8 @@ else:
                                     log.close()
                                     log=open(os.path.join(param["out"], 'file.log'),'a')
                                     if len(open(o,"r").read())==0 or not os.path.isfile(o):
-                                      log.write("Profile HMM file '{}.hmm' with new cutoff score was not created or is empty!\n".format(name))
-                                      print("Profile HMM file '{}.hmm' with new cutoff score was not created or is empty!".format(name))
+                                      log.write("ERROR: Profile HMM file '{}.hmm' with new cutoff score was not created or is empty!\n".format(name))
+                                      print("ERROR: Profile HMM file '{}.hmm' with new cutoff score was not created or is empty!".format(name))
                                     else:
                                       log.write("'{}' HMM model with new cutoff score: {}\n".format(name,os.path.join(param['out'],'new_scores','{}.hmm'.format(name))))
                                       try:
@@ -1269,8 +1331,8 @@ else:
                                         os.chdir(os.path.join(param['out'],'recall'))
                                       except Exception as e: 
                                         print(e)
-                                        print("Recall directory wasn't created!")
-                                        log.write("\nRecall directory wasn't created!\n")
+                                        print("ERROR: Recall directory wasn't created!")
+                                        log.write("\nERROR: Recall directory wasn't created!\n")
                                       else:
                                         db=vir_db[name]
                                         i=os.path.join(os.path.join(param['out'],'new_scores','{}.hmm'.format(name)))
@@ -1281,7 +1343,7 @@ else:
                                         log.close()
                                         log=open(os.path.join(param["out"], 'file.log'),'a')
                                         if run_prospector(db,i,o,param['reads_vir'],"recall",look,cmd):
-                                          print("'{}' hmm-prospector runtime for {}: {}".format(name,"recall",datetime.now()-start))
+                                          #print("'{}' hmm-prospector runtime for {}: {}".format(name,"recall",datetime.now()-start))
                                           log.write("'{}' hmm-prospector runtime for {}: {}\n".format(name,"recall",datetime.now()-start))
                                           log.write("'{}' recall results: {}\n".format(name,os.path.join(param["out"],"recall",name)))
                                           log.close()
@@ -1292,8 +1354,8 @@ else:
                                             os.chdir(os.path.join(param['out'],'results'))
                                           except Exception as e: 
                                             print(e)
-                                            print("Results directory wasn't created!")
-                                            log.write("\nResults directory wasn't created!\n")
+                                            print("ERROR: Results directory wasn't created!")
+                                            log.write("\nERROR: Results directory wasn't created!\n")
                                           else:
                                             path=param['out']
                                             fasta=vir_db[name]
@@ -1306,38 +1368,46 @@ else:
                                                 os.chdir(os.path.join(param['out'],'results','valid'))
                                               except Exception as e: 
                                                 print(e)
-                                                print("Valid directory wasn't created!")
-                                                log.write("\nValid directory wasn't created!\n")
+                                                print("ERROR: Valid directory wasn't created!")
+                                                log.write("\nERROR: Valid directory wasn't created!\n")
                                               else:
                                                 try:
                                                   os.system('cp {}/new_scores/{}.hmm {}/results/valid/{}.hmm'.format(param['out'],name,param['out'],name))
                                                 except Exception as e: 
                                                   print(e)
-                                                  print("{} file cannot be copied to valid folder!".format(name))
-                                                  log.write("{} file cannot be copied to valid folder!\n".format(name))
+                                                  print("ERROR: {} file cannot be copied to valid folder!".format(name))
+                                                  log.write("ERROR: {} file cannot be copied to valid folder!\n".format(name))
                                                 else:
-                                                  print("Profile HMM '{}' is valid!".format(name))
+                                                  #print("Profile HMM '{}' is valid!".format(name))
                                                   log.write("Profile HMM '{}' is valid!\n".format(name))
+                        if "invalidated because the highest Cscore > lowest Vscore" in finalresults.keys():
+                          print("{} invalidated because the highest Cscore > lowest Vscore".format(len(set(finalresults["invalidated because the highest Cscore > lowest Vscore"]))))
+                        if "invalidated because the highest Cscore > (pt%) x lowest Vscore" in finalresults.keys():
+                          print("{} invalidated because the highest Cscore > (pt%) x lowest Vscore".format(len(set(finalresults["invalidated because the highest Cscore > (pt%) x lowest Vscore"]))))
+                        if "invalidated because recall < (pd%)" in finalresults.keys():
+                          print("{} invalidated because recall < (pd%)".format(len(set(finalresults["invalidated because recall < (pd%)"]))))
+                        if "validated with adjusted cutoff score" in finalresults.keys():
+                          print("{} validated with adjusted cutoff score".format(len(set(finalresults["validated with adjusted cutoff score"]))))
                 log.write("\n")
-                print("\n")
+                #print("\n")
                 if not os.path.isdir(os.path.join(param['out'],'results')):
                   os.mkdir(os.path.join(param['out'],'results'))
                 os.chdir(os.path.join(param['out'],'results'))
                 if validated==[]: 
-                  print("List of valid HMMs is empty!")
-                  log.write("List of valid HMMs is empty!\n")
+                  print("ERROR: List of valid HMMs is empty!")
+                  log.write("ERROR: List of valid HMMs is empty!\n")
                 else:
                   log.write("\n{} valid HMMs: {}\n".format(len(validated),validated))
-                  vfile=open("{}/results/validHMMs".format(param['out']),"w")
-                  vfile.write("\n".join(validated))
-                  vfile.close()
-                  if os.path.isfile("{}/results/valid/selected.hmm".format(param['out'])):
-                    os.remove("{}/results/valid/selected.hmm".format(param['out']))
+                  #vfile=open("{}/results/validHMMs".format(param['out']),"w")
+                  #vfile.write("\n".join(validated))
+                  #vfile.close()
+                  if os.path.isfile("{}/results/valid/valid.hmm".format(param['out'])):
+                    os.remove("{}/results/valid/valid.hmm".format(param['out']))
                   try:
-                    subprocess.check_output("cat {}/results/valid/*.hmm > {}/results/valid/selected.hmm".format(param['out'],param['out']), shell=True)
+                    subprocess.check_output("cat {}/results/valid/*.hmm > {}/results/valid/valid.hmm".format(param['out'],param['out']), shell=True)
                   except:
-                    print("All {} valid HMM were not concatenated!".format(len(validated)))
-                    log.write("All {} valid HMM were not concatenated!\n".format(len(validated)))
+                    print("ERROR: All {} valid HMM were not concatenated!".format(len(validated)))
+                    log.write("ERROR: All {} valid HMM were not concatenated!\n".format(len(validated)))
                   else:
                     print("All {} valid HMM were concatenated!".format(len(validated)))
                     log.write("All {} valid HMM were concatenated!\n".format(len(validated)))
@@ -1351,8 +1421,8 @@ else:
                 match=["Invalid"]
                 both=False   
                 if negative==[]:
-                  print("List of invalid HMMs is empty!")
-                  log.write("List of invalid HMMs is empty!\n")
+                  print("ERROR: List of invalid HMMs is empty!")
+                  log.write("ERROR: List of invalid HMMs is empty!\n")
                 else:
                   #log.write("\nInvalid: {}\n".format(negative))     
                   call_fetch(name,o,i,match,negative,both)
@@ -1360,10 +1430,27 @@ else:
                 log.write("\n{} Error HMMs: {}\n".format(len(error),error))
                 total=int(str(subprocess.check_output("grep 'NAME' {}| wc -l".format(param['i']), shell=True)).replace("b'","").replace("\\n'","").split()[0])
                 if len(positive)+len(negative)+len(error)==total:
-                  print("Something is wrong, the sum of invalid and valid models is not equal to the total number of models!")
-                  log.write("Something is wrong, the sum of invalid and valid models is not equal to the total number of models!\n")
+                  print("ERROR: Something is wrong, the sum of invalid and valid models is not equal to the total number of models!")
+                  log.write("ERROR: Something is wrong, the sum of invalid and valid models is not equal to the total number of models!\n")
+              log.write("\nFinal result:\n")
+              total=int(str(subprocess.check_output("grep 'NAME' {}| wc -l".format(param['i']), shell=True)).replace("b'","").replace("\\n'","").split()[0])
+              log.write("{} tested profile HMMs\n".format(total))
+              if param['db_type']=='short': 
+                log.write("\t{} positive for OrgCell = invalidated\n".format(len(set(finalresults["positive for OrgCell"]))))
+              elif param['db_type']=='long':
+                log.write("\t{} positive for OrgCell\n".format(len(set(finalresults["positive for OrgCell"]))))
+                if "invalidated because the highest Cscore > lowest Vscore" in finalresults.keys():
+                  log.write("\t\t{} invalidated because the highest Cscore > lowest Vscore\n".format(len(set(finalresults["invalidated because the highest Cscore > lowest Vscore"]))))
+                if "invalidated because the highest Cscore > (pt%) x lowest Vscore" in finalresults.keys():
+                  log.write("\t\t{} invalidated because the highest Cscore > (pt%) x lowest Vscore\n".format(len(set(finalresults["invalidated because the highest Cscore > (pt%) x lowest Vscore"]))))
+                if "invalidated because recall < (pd%)" in finalresults.keys():
+                  log.write("\t\t{} invalidated because recall < (pd%)\n".format(len(set(finalresults["invalidated because recall < (pd%)"]))))
+                if "validated with adjusted cutoff score" in finalresults.keys():
+                  log.write("\t\t{} validated with adjusted cutoff score\n".format(len(set(finalresults["validated with adjusted cutoff score"]))))
+              log.write("\t{} negative for OrgCell = validated\n".format(len(set(finalresults["negative for OrgCell"]))))
             execution=datetime.now() - start_time
             print("\nExecution time: {}".format(execution))
             log.write("\nExecution time: {}".format(execution))
             log.close()
 print("Done.")
+quit()
