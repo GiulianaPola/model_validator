@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-version='1.0.7'
+version='1.0.8'
 
 import os
 from datetime import datetime
@@ -1141,7 +1141,25 @@ else:
           
           log.write('\nCommand line:\n{}\n'.format(' '.join(sys.argv)))
           
-          log.write('\nUser:\n{}\n'.format(os.getlogin()))
+          user=""
+          try:
+            user=os.getlogin()
+          except:
+            try:
+              user=os.environ['LOGNAME']
+            except:
+              try:
+                user=os.environ['USER']
+              except:
+                pass
+              else:
+                pass
+            else:
+              pass
+          else:
+            pass
+          if not user=="":
+            log.write('\nUser:\n{}\n'.format(user))
           
           log.write('\nParameters:\n')
           for key in sorted(args.keys()):
