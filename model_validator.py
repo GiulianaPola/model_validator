@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-version='1.0.8'
+version='1.0.8B'
 
 import os
 from datetime import datetime
@@ -1002,52 +1002,35 @@ def compare_scores(cell_org,vir,pt,i,o,name):
       print("ERROR: '{}' min vir score < old cutoff score!".format(name))
       log.write("ERROR: '{}' min vir score < old cutoff score!\n".format(name))
       error.append(name)
-    try:
-      C = get_score(name,cell_org,"max",indexes[1])
-    except Exception as e: 
-      log.write("INVALID: No '{}' cell_org matches that satisfy reporting thresholds!\n".format(name))
-      ##print("INVALID: No '{}' cell_org matches that satisfy reporting thresholds!".format(name))
-      key="invalidated because had no cell_org matches"
-      if not key in finalresults.keys():
-        finalresults[key]=[name]
-      elif not name in finalresults[key]:
-        finalresults[key].append(name)
-      invalidated.append(name)
-      valid=False
     else:
-      if C<oldcutoff:
-        print("ERROR: '{}' max cell_org score < old cutoff score!".format(name))
-        log.write("ERROR: '{}' max cell_org score < old cutoff score!\n".format(name))
-        error.append(name)
-      if C>V:
-        csv.write("{}\t{}\t{}\t\tFalse\t\t\t\t\n".format(name,V,C))
-        log.write("INVALID: '{}' min vir score < max cell_org score!\n".format(name))
-        ##print("INVALID: '{}' min vir score < max cell_org score!".format(name))
-        key="invalidated because the highest Cscore > lowest Vscore"
+      try:
+        C = get_score(name,cell_org,"max",indexes[1])
+      except Exception as e: 
+        log.write("INVALID: No '{}' cell_org matches that satisfy reporting thresholds!\n".format(name))
+        ##print("INVALID: No '{}' cell_org matches that satisfy reporting thresholds!".format(name))
+        key="invalidated because had no cell_org matches"
         if not key in finalresults.keys():
           finalresults[key]=[name]
         elif not name in finalresults[key]:
           finalresults[key].append(name)
-        log.write("query_pHMM={}\tmin_vir_score={:.1f}\tmax_cell_org_score={:.1f}\n".format(name,float(V),float(C)))
+        invalidated.append(name)
         valid=False
       else:
-        P = float(V) * pt/100
-        if C>P:
-          csv.write("{}\t{}\t{}\t{}\tFalse\t\t\t\t\n".format(name,V,C,P))
-          log.write("INVALID: '{}' {:.1f}% (-pt) of min vir score < max cell_org score!\n".format(name,pt))
-          key="invalidated because the highest Cscore > (pt%) x lowest Vscore"
-          if not key in finalresults.keys():
-            finalresults[key]=[name]
-          elif not name in finalresults[key]:
-            finalresults[key].append(name)
-          ##print("INVALID: '{}' {:.1f}% (-pt) of min vir score < max cell_org score!".format(name,pt))
-          log.write("query_pHMM={}\tmin_vir_score={:.1f}\tmax_cell_org_score={:.1f}\tpt%_min_vir_score={:.1f}\n".format(name,float(V),float(C),float(P)))
-          valid=False
+        if C<oldcutoff:
+          print("ERROR: '{}' max cell_org score < old cutoff score!".format(name))
+          log.write("ERROR: '{}' max cell_org score < old cutoff score!\n".format(name))
+          error.append(name)
         else:
-          newcutoff = (pt/100 * (V - C)) + C
-          log.write("'{}' {:.1f}% (-pt) of min vir score > max cell_org score!\n".format(name,pt))
-          #print("'{}' {:.1f}% (-pt) of min vir score > max cell_org score!".format(name,pt)
-          log.write("query_pHMM={}\tmin_vir_score={:.1f}\tmax_cell_org_score={:.1f}\tpt%_min_vir_score={:.1f}\n".format(name,float(V),float(C),float(P)))
+          P = float(V) * pt/100
+          if C>P:
+            csv.write("{}\t{}\t{}\t{}\tFalse\t\t\t\t\n".format(name,V,C,P))
+            log.write("'{}' {:.1f}% (-pt) of min vir score < max cell_org score!\n".format(name,pt))
+            log.write("query_pHMM={}\tmin_vir_score={:.1f}\tmax_cell_org_score={:.1f}\tpt%_min_vir_score={:.1f}\n".format(name,float(V),float(C),float(P)))
+            newcutoff = 1.2*C
+          else:
+            newcutoff = (pt/100 * (V - C)) + C
+            log.write("'{}' {:.1f}% (-pt) of min vir score > max cell_org score!\n".format(name,pt))
+            log.write("query_pHMM={}\tmin_vir_score={:.1f}\tmax_cell_org_score={:.1f}\tpt%_min_vir_score={:.1f}\n".format(name,float(V),float(C),float(P)))
           if vir_hmm=='':
             log.write("ERROR: Profile HMM file '{}.hmm' in cell_org is empty!\n".format(name))
             print("ERROR: Profile HMM file '{}.hmm' in cell_org is empty!".format(name))
@@ -1082,7 +1065,7 @@ def validate_recall(path,name,fasta,pd):
   match=int(str(subprocess.check_output("wc -l {}/recall/{}/table1.csv".format(path,name), shell=True)).replace("b'","").split()[0])-1
   if match<=0:
     #print("INVALID: '{}' recall didn't have any matches!")
-    log.write("INVALID: '{}' recall didn't have any matches!\n")
+    log.write("INVALID: '{}' recall didn't have any matches!\n".format(name))
     key="invalidated because recall < (pd%)"
     if not key in finalresults.keys():
       finalresults[key]=[name]
