@@ -39,6 +39,9 @@ python model_validator.py -i <hmm_file> -model_type <'l'|'long'|'s'|'short'> -db
 To report bugs, to ask for help and to give any feedback, please contact Arthur Gruber (argruber@usp.br) or Giuliana L. Pola (giulianapola@usp.br).
 
 ## Versions
+### 1.0.8B
+- Change in the rules for creating the new cutoff score, generated less invalidation of the models
+
 ### 1.0.8
 - Fixed the error when getting the username to put in the log
 
