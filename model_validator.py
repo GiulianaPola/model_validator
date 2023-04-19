@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-version='1.0.9B'
+version='1.0.10B'
 
 import os
 from datetime import datetime
@@ -955,8 +955,8 @@ def get_vir_db(table,folder,models):
                         taxonomy[name]['Family']=family
   error=sorted(list(set(error)))
   if len(error)>0:
-    print("ERROR: {} HMM models had missing taxon folder or missing protein file!".format(len(error)))
-    log.write("\nERROR: Some HMM models were invalidated because of missing taxon folder or missing protein file!\n")
+    print("ERROR: {} HMM models were invalidated because no corresponding taxon folder/protein file found!".format(len(error)))
+    log.write("\nERROR: Some HMM models were invalidated because no corresponding taxon folder/protein file found!\n")
     log.write("{} HMMs with missing files: {}\n".format(len(error),",".join(error)))
     log.write("{} HMMs with files found: {}\n".format(len(valid),",".join(valid)))
   else:
@@ -1069,7 +1069,7 @@ def validate_recall(path,name,fasta,pd):
     #print("INVALID: '{}' recall didn't have any matches!")
     log.write("INVALID: '{}' recall didn't have any matches!\n".format(name))
     
-    key="invalidated because recall < (pd%)"
+    key="invalidated because adjusted cutoff yielded recall < (pd%)"
     if not key in finalresults.keys():
       finalresults[key]=[name]
     elif not name in finalresults[key]:
@@ -1081,7 +1081,7 @@ def validate_recall(path,name,fasta,pd):
       #print("INVALID: '{}' recall detection percentage {:.1f}% <= {:.1f}% (-pd)!".format(name,match/total*100,pd))
       log.write("INVALID: '{}' recall detection percentage {:.1f}% <= {:.1f}% (-pd)!\n".format(name,match/total*100,pd))
       
-      key="invalidated because recall < (pd%)"
+      key="invalidated because adjusted cutoff yielded recall < (pd%)"
       if not key in finalresults.keys():
         finalresults[key]=[name]
       elif not name in finalresults[key]:
@@ -1383,15 +1383,18 @@ else:
                                                   print(e)
                                                   print("ERROR: {} file cannot be copied to valid folder!".format(name))
                                                   log.write("ERROR: {} file cannot be copied to valid folder!\n".format(name))
+                                                  error.append(name)
                                                 else:
                                                   #print("Profile HMM '{}' is valid!".format(name))
                                                   log.write("Profile HMM '{}' is valid!\n".format(name))
+                                                  if not name in validated:
+                                                    validated.append(name)
                         if "invalidated because the highest Cscore > lowest Vscore" in finalresults.keys():
                           print("{} invalidated because the highest Cscore > lowest Vscore".format(len(set(finalresults["invalidated because the highest Cscore > lowest Vscore"]))))
                         if "invalidated because the highest Cscore > (pt%) x lowest Vscore" in finalresults.keys():
                           print("{} invalidated because the highest Cscore > (pt%) x lowest Vscore".format(len(set(finalresults["invalidated because the highest Cscore > (pt%) x lowest Vscore"]))))
-                        if "invalidated because recall < (pd%)" in finalresults.keys():
-                          print("{} invalidated because recall < (pd%)".format(len(set(finalresults["invalidated because recall < (pd%)"]))))
+                        if "invalidated because adjusted cutoff yielded recall < (pd%)" in finalresults.keys():
+                          print("{} invalidated because adjusted cutoff yielded recall < (pd%)".format(len(set(finalresults["invalidated because adjusted cutoff yielded recall < (pd%)"]))))
                         if "validated with adjusted cutoff score" in finalresults.keys():
                           print("{} validated with adjusted cutoff score".format(len(set(finalresults["validated with adjusted cutoff score"]))))
                 log.write("\n")
@@ -1403,10 +1406,11 @@ else:
                   print("ERROR: List of valid HMMs is empty!")
                   log.write("ERROR: List of valid HMMs is empty!\n")
                 else:
+                  validated=list(set(validated))
                   log.write("\n{} valid HMMs: {}\n".format(len(validated),validated))
-                  #vfile=open("{}/results/validHMMs".format(param['out']),"w")
-                  #vfile.write("\n".join(validated))
-                  #vfile.close()
+                  vfile=open("{}/results/valid_HMMs_list.txt".format(param['out']),"w")
+                  vfile.write("\n".join(validated))
+                  vfile.close()
                   if os.path.isfile("{}/results/valid/valid.hmm".format(param['out'])):
                     os.remove("{}/results/valid/valid.hmm".format(param['out']))
                   try:
@@ -1481,7 +1485,7 @@ else:
                       itaxons.write("\n")
                   call_fetch(name,o,i,match,invalidated,both)
                 error=sorted(list(set(error)))
-                log.write("\n{} Error HMMs: {}\n".format(len(error),error))
+                log.write("\n{} profile HMM(s) with validation error: {}\n".format(len(error),error))
                 total=int(str(subprocess.check_output("grep 'NAME' {}| wc -l".format(param['i']), shell=True)).replace("b'","").replace("\\n'","").split()[0])
                 if len(positive)+len(negative)+len(error)==total:
                   print("ERROR: Something is wrong, the sum of invalid and valid models is not equal to the total number of models!")
@@ -1497,8 +1501,8 @@ else:
                   log.write("\t\t{} invalidated because the highest Cscore > lowest Vscore\n".format(len(set(finalresults["invalidated because the highest Cscore > lowest Vscore"]))))
                 if "invalidated because the highest Cscore > (pt%) x lowest Vscore" in finalresults.keys():
                   log.write("\t\t{} invalidated because the highest Cscore > (pt%) x lowest Vscore\n".format(len(set(finalresults["invalidated because the highest Cscore > (pt%) x lowest Vscore"]))))
-                if "invalidated because recall < (pd%)" in finalresults.keys():
-                  log.write("\t\t{} invalidated because recall < (pd%)\n".format(len(set(finalresults["invalidated because recall < (pd%)"]))))
+                if "invalidated because adjusted cutoff yielded recall < (pd%)" in finalresults.keys():
+                  log.write("\t\t{} invalidated because adjusted cutoff yielded recall < (pd%)\n".format(len(set(finalresults["invalidated because adjusted cutoff yielded recall < (pd%)"]))))
                 if "validated with adjusted cutoff score" in finalresults.keys():
                   log.write("\t\t{} validated with adjusted cutoff score\n".format(len(set(finalresults["validated with adjusted cutoff score"]))))
               log.write("\t{} negative for OrgCell = validated\n".format(len(set(finalresults["negative for OrgCell"]))))
