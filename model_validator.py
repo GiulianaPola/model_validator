@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-version='1.0.8B'
+version='1.0.9B'
 
 import os
 from datetime import datetime
@@ -12,7 +12,6 @@ import time
 
 param=dict()
 validated=[]
-invalidated=[]
 error=[]
 taxonomy=dict()
 start_time = datetime.now()
@@ -562,11 +561,11 @@ def list_HMMs(name,match,o,positive):
   listHMMs=''
   if positive==[]:
     if not name=='':
-      print("List of {} HMMs for {} is empty!".format(match.lower(),name))
-      log.write("List of {} HMMs for {} is empty!\n".format(match.lower(),name))
+      print("ERROR: List of {} HMMs for {} is empty!".format(match.lower(),name))
+      log.write("ERROR: List of {} HMMs for {} is empty!\n".format(match.lower(),name))
     else:
-      print("List of {} HMMs is empty!".format(match.lower()))
-      log.write("List of {} HMMs is empty!\n".format(match.lower()))
+      print("ERROR: List of {} HMMs is empty!".format(match.lower()))
+      log.write("ERROR: List of {} HMMs is empty!\n".format(match.lower()))
   else:
     try:
       if match=="Match":
@@ -581,11 +580,11 @@ def list_HMMs(name,match,o,positive):
     except Exception as e: 
       log.write("{}\n".format(e))
       if not name=='':
-        print("List of {} HMMs for {} could not be written!".format(match.lower(),name))
-        log.write("List of {} HMMs for {} could not be written!\n".format(match.lower(),name))
+        print("ERROR: List of {} HMMs for {} could not be written!".format(match.lower(),name))
+        log.write("ERROR: List of {} HMMs for {} could not be written!\n".format(match.lower(),name))
       else:
-        print("List of {} HMMs could not be written!".format(match.lower()))
-        log.write("List of {} HMMs could not be written!\n".format(match.lower()))
+        print("ERROR: List of {} HMMs could not be written!".format(match.lower()))
+        log.write("ERROR: List of {} HMMs could not be written!\n".format(match.lower()))
       valid=False
     else:
       pass
@@ -599,12 +598,12 @@ def validate_database(d):
     dfile=open(d,"r")
   except Exception as e: 
     log.write("{}\n".format(e))
-    print("Profile HMM dataset couldn't be opened!")
+    print("ERROR: Profile HMM dataset couldn't be opened!")
     valid=False
   else:
     dtext=dfile.read()
     if dtext.isspace() or len(dtext)==0:
-      print("Profile HMM dataset is empty!")
+      print("ERROR: Profile HMM dataset is empty!")
       valid=False
     else:
       database=dtext
@@ -617,8 +616,8 @@ def fetch_hmm(namelist,d,o):
       os.mkdir(o)
     except Exception as e: 
       log.write("{}\n".format(e))
-      print("'{}' directory was not created!".format(os.path.split(o)[-1]))
-      log.write("'{}' directory was not created!\n".format(os.path.split(o)[-1]))
+      print("ERROR: '{}' directory was not created!".format(os.path.split(o)[-1]))
+      log.write("ERROR: '{}' directory was not created!\n".format(os.path.split(o)[-1]))
       valid=False
     else:
       print("'{}' directory was created!".format(os.path.split(o)[-1]))
@@ -634,20 +633,20 @@ def fetch_hmm(namelist,d,o):
         for name in namelist:
           if name not in database:
             missing.append(name)
-            log.write("{} was not found in HMM file (-i)!".format(name))
+            log.write("ERROR: {} was not found in HMM file (-i)!".format(name))
           else:
             selected.append(name)
             head=database.split("NAME  "+name)[0]
             tail=database.split("NAME  "+name)[1]
-            hmm="HMMER"+head.split("HMMER")[-1]+"NAME  "+name+tail.split("//")[0]+"//"
+            hmm="HMMER"+head.split("HMMER")[-1]+"NAME  "+name+tail.split("//")[0]+"//\n"
             hmms.append(hmm)
             try:
               hmmfile=open(os.path.join(o, '{}.hmm'.format(name)),'w')
               hmmfile.write("")
             except Exception as e: 
               log.write("{}\n".format(e))
-              print("'{}' HMM file was not created!".format(name))
-              log.write("'{}' HMM file was not created!\n".format(name))
+              print("ERROR: '{}' HMM file was not created!".format(name))
+              log.write("ERROR: '{}' HMM file was not created!\n".format(name))
               valid=False
             else:
               hmmfile.write(hmm)
@@ -655,8 +654,8 @@ def fetch_hmm(namelist,d,o):
         if not missing==[]:
           log.write("Missing HMMs: {}\n".format(missing))
         if selected==[]:
-          print("All selected HMMs are missing!")
-          log.write("All selected HMMs are missing!\n")
+          print("ERROR: All selected HMMs are missing!")
+          log.write("ERROR: All selected HMMs are missing!\n")
           valid=False
         else:
           try:
@@ -665,8 +664,8 @@ def fetch_hmm(namelist,d,o):
             selectedfile.write("")
           except Exception as e: 
             log.write("{}\n".format(e))
-            print("Selected HMM file was not created!")
-            log.write("Selected HMM file was not created!\n")
+            print("ERROR: Selected HMM file was not created!")
+            log.write("ERROR: Selected HMM file was not created!\n")
             valid=False
           else:
             selectedfile.write('\n'.join(hmms))
@@ -719,14 +718,14 @@ def call_fetch(name,o,i,match,positive,both):
     if negative==[]:
       if not match[1]==mismatch:
         if not name=="":
-          log.write("{} HMMs list for {} is empty!\n".format(mismatch.capitalize(),name))
-          print("{} HMMs list for {} is empty!".format(mismatch.capitalize(),name))
+          log.write("ERROR: {} HMMs list for {} is empty!\n".format(mismatch.capitalize(),name))
+          print("ERROR: {} HMMs list for {} is empty!".format(mismatch.capitalize(),name))
         else:
-          log.write("{} HMMs list is empty!\n".format(mismatch.capitalize()))
-          print("{} HMMs list is empty!".format(mismatch.capitalize()))
+          log.write("ERROR: {} HMMs list is empty!\n".format(mismatch.capitalize()))
+          print("ERROR: {} HMMs list is empty!".format(mismatch.capitalize()))
       else:
-        log.write("{} HMMs list is empty!\n".format(match[1].capitalize()))
-        print("{} HMMs list is empty!".format(match[1].capitalize()))
+        log.write("ERROR: {} HMMs list is empty!\n".format(match[1].capitalize()))
+        print("ERROR: {} HMMs list is empty!".format(match[1].capitalize()))
     else:
         negative=sorted(list(set(negative)))
         if not os.path.isdir(os.path.join(o,"results")):
@@ -872,7 +871,7 @@ def get_vir_db(table,folder,models):
                 log.write("'{}' family: {}\n".format(name,family))
                 log.write("'{}' ERROR: Missing family folder: {}\n".format(name,os.path.join(folder,family)))
           else:
-            proteins=str(subprocess.check_output("grep '{}' {} | cut -f4 | sort -u".format(taxon,table), shell=True))[2:-1].split("\\n")
+            proteins=str(subprocess.check_output("grep '{}' {} | cut -f{} | sort -u".format(taxon,table,headers.index("Protein")+1), shell=True))[2:-1].split("\\n")
             proteins.remove("")
             for protein in proteins:
               prot_file=''
@@ -937,6 +936,7 @@ def get_vir_db(table,folder,models):
                     error.extend(names)
                     path_list=os.path.split(path)
                     i=path_list.index(family)
+                    error.extend(names)
                     print("ERROR: Missing protein file '{}': {}".format(os.path.split(prot_file)[-1],",".join(names)))
                     for name in names:
                       pass
@@ -1008,12 +1008,13 @@ def compare_scores(cell_org,vir,pt,i,o,name):
       except Exception as e: 
         log.write("INVALID: No '{}' cell_org matches that satisfy reporting thresholds!\n".format(name))
         ##print("INVALID: No '{}' cell_org matches that satisfy reporting thresholds!".format(name))
+        
         key="invalidated because had no cell_org matches"
         if not key in finalresults.keys():
           finalresults[key]=[name]
         elif not name in finalresults[key]:
           finalresults[key].append(name)
-        invalidated.append(name)
+        
         valid=False
       else:
         if C<oldcutoff:
@@ -1057,6 +1058,7 @@ def compare_scores(cell_org,vir,pt,i,o,name):
                 valid=False
               else:
                 out.write(new_hmm)
+                out.write("\n")
                 out.close()
   return valid
   
@@ -1066,6 +1068,7 @@ def validate_recall(path,name,fasta,pd):
   if match<=0:
     #print("INVALID: '{}' recall didn't have any matches!")
     log.write("INVALID: '{}' recall didn't have any matches!\n".format(name))
+    
     key="invalidated because recall < (pd%)"
     if not key in finalresults.keys():
       finalresults[key]=[name]
@@ -1077,6 +1080,7 @@ def validate_recall(path,name,fasta,pd):
     if match/total*100<pd:
       #print("INVALID: '{}' recall detection percentage {:.1f}% <= {:.1f}% (-pd)!".format(name,match/total*100,pd))
       log.write("INVALID: '{}' recall detection percentage {:.1f}% <= {:.1f}% (-pd)!\n".format(name,match/total*100,pd))
+      
       key="invalidated because recall < (pd%)"
       if not key in finalresults.keys():
         finalresults[key]=[name]
@@ -1334,6 +1338,7 @@ else:
                                         print(e)
                                         print("ERROR: Recall directory wasn't created!")
                                         log.write("\nERROR: Recall directory wasn't created!\n")
+                                        error.append(name)
                                       else:
                                         db=vir_db[name]
                                         i=os.path.join(os.path.join(param['out'],'new_scores','{}.hmm'.format(name)))
@@ -1416,17 +1421,65 @@ else:
                 negative=[]
                 all=validated
                 all.extend(error)
-                valid,negative=get_diff(i,all,"Valid","")
-                name=""
-                o=param['out']
-                match=["Invalid"]
-                both=False   
-                if negative==[]:
+                #valid,negative=get_diff(i,all,"Valid","")
+                invalidated=[]
+                if param['db_type']=='short' and "positive for OrgCell" in finalresults.keys(): 
+                  invalidated=finalresults["positive for OrgCell"]
+                elif param['db_type']=='long':
+                  for key in finalresults.keys():
+                    if "invalidated" in key:
+                      try:
+                        if invalidated==[]:
+                          invalidated=finalresults[key]
+                        else:
+                          invalidated.extend(finalresults[key])
+                      except Exception as e:
+                        print(e)
+                      else:
+                        pass
+                if invalidated==[]:
                   print("ERROR: List of invalid HMMs is empty!")
                   log.write("ERROR: List of invalid HMMs is empty!\n")
                 else:
-                  #log.write("\nInvalid: {}\n".format(negative))     
-                  call_fetch(name,o,i,match,negative,both)
+                  name=""
+                  o=param['out']
+                  match=["Invalid"]
+                  both=False   
+                  #log.write("\nInvalid: {}\n".format(negative))    
+                  with open(os.path.join(param['out'],'invalidated.csv'),"w") as itaxons:
+                    maxprot=0
+                    maxtax=0
+                    maxfam=0
+                    maxmod=0
+                    for model in invalidated:
+                      if len(model)>maxmod:
+                        maxmod=len(model)
+                      one=taxonomy[model]
+                      if len(one["Protein"])>maxprot:
+                        maxprot=len(one["Protein"])
+                      if len(one["Taxon"])>maxtax:
+                        maxtax=len(one["Taxon"])
+                      if len(one["Family"])>maxfam:
+                        maxfam=len(one["Family"])
+                    itaxons.write("Model".ljust(maxmod))
+                    itaxons.write(" ")
+                    itaxons.write("Protein".ljust(maxprot))
+                    itaxons.write(" ")
+                    itaxons.write("Taxon".ljust(maxtax))
+                    itaxons.write(" ")
+                    itaxons.write("Family".ljust(maxfam))
+                    itaxons.write("\n")
+                    for model in invalidated:
+                      one=taxonomy[model]
+                      itaxons.write(model.ljust(maxmod))
+                      itaxons.write(" ")
+                      itaxons.write(one["Protein"].ljust(maxprot))
+                      itaxons.write(" ")
+                      itaxons.write(one["Taxon"].ljust(maxtax))
+                      itaxons.write(" ")
+                      itaxons.write(one["Family"].ljust(maxfam))
+                      itaxons.write("\n")
+                  call_fetch(name,o,i,match,invalidated,both)
                 error=sorted(list(set(error)))
                 log.write("\n{} Error HMMs: {}\n".format(len(error),error))
                 total=int(str(subprocess.check_output("grep 'NAME' {}| wc -l".format(param['i']), shell=True)).replace("b'","").replace("\\n'","").split()[0])
@@ -1451,7 +1504,7 @@ else:
               log.write("\t{} negative for OrgCell = validated\n".format(len(set(finalresults["negative for OrgCell"]))))
             execution=datetime.now() - start_time
             print("\nExecution time: {}".format(execution))
-            log.write("\nExecution time: {}".format(execution))
+            log.write("\nExecution time: {}\n".format(execution))
             log.close()
 print("Done.")
 quit()

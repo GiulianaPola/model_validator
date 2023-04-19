@@ -39,6 +39,10 @@ python model_validator.py -i <hmm_file> -model_type <'l'|'long'|'s'|'short'> -db
 To report bugs, to ask for help and to give any feedback, please contact Arthur Gruber (argruber@usp.br) or Giuliana L. Pola (giulianapola@usp.br).
 
 ## Versions
+### 1.0.9B
+- Creation of invalidated.csv CSV file that contains invalidated model, protein, taxon and family
+- Add line break at the end of generated templates
+
 ### 1.0.8B
 - Change in the rules for creating the new cutoff score, generated less invalidation of the models
 
