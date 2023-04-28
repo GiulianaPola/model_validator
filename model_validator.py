@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-version='1.0.10B'
+version='1.0.11B'
 
 import os
 from datetime import datetime
@@ -172,20 +172,14 @@ def print_help():
   print(string)
 
 
-def rename(i,name,typ):
-  path=''
-  if '/' in name:
-    path=os.path.split(name)[0]
-    name=os.path.split(name)[1]
-  newname=os.path.join(path, name)
-  if typ=='dir':
-    while os.path.isdir(newname):
-      i+=1
-      newname=os.path.join(path, str(name+'_'+str(i)))
-  elif typ=='file':
-    while os.path.isfile(newname):
-      i+=1
-      newname=os.path.join(path, str(name+'_'+str(i)))
+def rename(name):
+  i=0
+  path = os.path.dirname(name)
+  name = os.path.basename(name)
+  newname = os.path.join(path, name)
+  while os.path.exists(newname):
+      i += 1
+      newname = os.path.join(path, "{}_{}".format(name, i))
   return newname
 
 def validate_conf(conf):
@@ -417,7 +411,7 @@ def validate_args(args):
             out=os.path.join(call,head_tail[1])
         if os.path.isdir(out):
           print("Output directory '{}' already exist!".format(os.path.split(out)[-1]))
-          out=rename(0,out,'dir')
+          out=rename(out)
         try:
           os.mkdir(out)
         except:
@@ -451,6 +445,7 @@ def cmd_prospector(parameters,db,i,o,name):
   else:
     cmd+=" -o {}".format(o)
   cmd+=" 1>{}_prosp_out 2>{}_prosp_er &".format(os.path.split(o)[-1],os.path.split(o)[-1])
+  cmd = cmd.replace('{', '').replace('}', '').replace('\'', '').replace('\"', '')
   if name=="cell_org":
     log.write("hmm-prospector for cell_org: {}\n".format(cmd))
   else:
@@ -544,16 +539,6 @@ def get_diff(hmm,positive,match,name):
            negative.remove(model)
      if "" in negative:
        negative.remove("")
-#  if not positive==[]:
-#    if not name=="":
-#      log.write("{} {} HMMs for {}: {}\n".format(len(positive),match.lower(),name,positive))
-#    else:
-#      log.write("{} {} HMMs: {}\n".format(len(positive),match.lower(),positive))
-#  if not negative==[]:   
-#    if not name=="":
-#      log.write("{} {} HMMs for {}: {}\n".format(len(negative),mismatch.lower(),name,negative))
-#    else:
-#      log.write("{} {} HMMs: {}\n".format(len(negative),mismatch.lower(),negative))
   return valid,negative
 
 def list_HMMs(name,match,o,positive):
@@ -624,7 +609,6 @@ def fetch_hmm(namelist,d,o):
       log.write("'{}' directory was created!\n".format(os.path.split(o)[-1])) 
   hmms=[]
   if valid==True:
-    #valid,namelist=validate_list(i)
     if valid==True:
       valid,database=validate_database(d)
       if valid==True:
@@ -739,7 +723,6 @@ def call_fetch(name,o,i,match,positive,both):
           else:
             print("'results' directory was created!")
             log.write("'results' directory was created!\n")
-        #log.write("{}:{}\n".format(mismatch,negative))
         valid,listHMMs=list_HMMs("",match[1],o,negative)
         if valid and not listHMMs=='':
           if match[1]=="Valid" or match[1]=="Invalid":
@@ -775,16 +758,80 @@ def call_fetch(name,o,i,match,positive,both):
   return valid
   
 def get_path(path,name):
-  import os
   folders=os.listdir(path)
   try:
     idx = [item.lower() for item in folders].index(name.lower())
   except Exception as e: 
-    #log.write("{}\n".format(e))
     return False
   else:
     return os.path.join(path,folders[idx])
-  
+
+def fetch_taxonomy(taxon,names):
+    if taxon==['']:
+      return '',[]
+    else:
+      if isinstance(taxon, list):
+        if '' in taxon:
+          taxon.remove('')
+        taxon=taxon[0]
+      Entrez.email = "giulianapola@usp.br"
+      handle = None
+      rank=None
+      family=[]
+      for n in range(3):
+          try:
+              handle = Entrez.esearch(db="Taxonomy", term=taxon)
+              record = Entrez.read(handle)
+              if len(record['IdList']) > 0:
+                  taxon_id = record['IdList'][0]
+                  handle = Entrez.efetch(db="Taxonomy", id=taxon_id, retmode="xml")
+                  break
+          except:
+              handle = None
+              time.sleep(1)
+      if handle is None:
+          error.extend(names)
+          print("ERROR: Failure in the connection with NCBI: {}".format(",".join(names)))
+          for name in names:
+              log.write("\n{}\n'{}' match cell_org!\n".format(name,name))
+              log.write("'{}' taxon: {}\n".format(name,taxon))
+              log.write("'{}' ERROR: Failure in the connection with NCBI!\n".format(name))
+      else:
+        records = Entrez.read(handle)[0]
+        rank = records.get("Rank")
+        lineage = records.get("LineageEx", [])
+        family = []
+        if rank == 'family':
+            family = [records.get("ScientificName")]
+            if "OtherNames" in records:
+              family.extend(records["OtherNames"]["Synonym"])
+            if family==None:
+              family=[]
+        elif rank not in ['genus', 'subfamily']:
+            error.extend(names)
+            print(" ERROR: Taxon '{}' rank is not genus or family or subfamily: {}".format(records.get("ScientificName"),",".join(names)))
+            for name in names:
+                log.write("\n{}\n'{}' match cell_org!\n".format(name,name))
+                log.write("'{}' taxon: {}\n".format(name,taxon))
+                log.write("'{}' ERROR: Taxon '{}' rank is not genus or family or subfamily!\n".format(name,records.get("ScientificName")))
+        for item in reversed(lineage):
+              if item['Rank'] == 'family':
+                  family=[item['ScientificName']]
+                  if "OtherNames" in item:
+                    family.extend(item["OtherNames"]["Synonym"])
+                  break
+        
+        handle.close()
+        
+        if family is None:
+            error.extend(names)
+            print("ERROR: Could not find family for taxon '{}': {}".format(records.get("ScientificName"),",".join(names)))
+            for name in names:
+                log.write("\n{}\n'{}' match cell_org!\n".format(name,name))
+                log.write("'{}' taxon: {}\n".format(name,taxon))
+                log.write("'{}': ERROR: Could not find family for taxon '{}'!\n".format(name,records.get("ScientificName")))
+      return rank, family
+
 def get_vir_db(table,folder,models):
   valid=[]
   error=[]
@@ -801,97 +848,121 @@ def get_vir_db(table,folder,models):
     family=None
     names=str(subprocess.check_output("grep '{}' {} | cut -f{} | sort -u".format(taxon,table,headers.index("HMM")+1), shell=True))[2:-1].split("\\n")
     names.remove("")
-    family=''
+    family=[]
     rank=''
-    txid=str(subprocess.check_output('grep "TXID" "{}/{}.hmm"'.format(models,names[0]), shell=True)).split("\\t")[-1].split("\\n")[0]
-    Entrez.email = "giulianapola@usp.br"
-    handle=None
-    for n in range(3):
-      try:
-        handle = Entrez.efetch(db="Taxonomy", id=txid, retmode="xml")
-        break
-      except:
-        handle=None
-        time.sleep(1)
-    if handle==None:
-      print("ERROR: Failure in the connection with NCBI!".format(taxon,",".join(names)))
+    rank,family=fetch_taxonomy(taxon, names)
+    if family==[]:
+      error.extend(names)
+      print("ERROR: Taxon '{}' family was not found: {}".format(taxon,",".join(names)))
       for name in names:
         log.write("\n{}\n'{}' match cell_org!\n".format(name,name))
         log.write("'{}' taxon: {}\n".format(name,taxon))
-        log.write("'{}' ERROR: Failure in the connection with NCBI!\n".format(name))
-      error.extend(names)
+        log.write("'{}' taxon rank: {}\n".format(name,rank))
+        log.write("'{}' ERROR: Taxon '{}' family was not found!\n".format(name,taxon))
     else:
-      records = Entrez.read(handle)[0]
-      if not "Rank" in records.keys():
-        error.extend(names)
-        print("ERROR: Taxon '{}' rank could not be found: {}".format(taxon,",".join(names)))
-        for name in names:
-          log.write("\n{}\n'{}' match cell_org!\n".format(name,name))
-          log.write("'{}' taxon: {}\n".format(name,taxon))
-          log.write("'{}' ERROR: Taxon '{}' rank could not be found!\n".format(name,taxon))
+      fam_dir==False
+      i=0
+      fam_name=''
+      if isinstance(family, list):
+        if len(family)==1:
+          fam_dir=get_path(folder,family[0])
+          fam_name=family[0]
+        else:
+          while fam_dir==False and i<len(family):
+            print("i={}".format(i))
+            fam_name=family[i]
+            fam_dir=get_path(folder,fam_name)
+            print("fam_dir:{}".format(fam_dir))
+            i+=1
       else:
-        rank=records["Rank"]
-        handle.close()
-        if rank=='family':
-          family=taxon
-        elif not rank in ['genus','subfamily']:
+        fam_dir=get_path(folder,family)
+        fam_name=family
+        print("fam_dir:{}".format(fam_dir))
+      if fam_dir==False:
+          names=str(subprocess.check_output("grep '{}' {} | cut -f{} | sort -u".format(taxon,table,headers.index("HMM")+1), shell=True))[2:-1].split("\\n")
+          names.remove("")
           error.extend(names)
-          print("ERROR: Taxon '{}' rank is not genus or family or subfamily: {}".format(taxon,",".join(names)))
+          print("ERROR: Missing family '{}' folder: {}".format(family,",".join(names)))
           for name in names:
             pass
             log.write("\n{}\n'{}' match cell_org!\n".format(name,name))
             log.write("'{}' taxon: {}\n".format(name,taxon))
             log.write("'{}' taxon rank: {}\n".format(name,rank))
-            log.write("'{}' ERROR: Taxon '{}' rank is not genus or family or subfamily!\n".format(name,taxon))
-        else:
-          if "LineageEx" in records.keys():
-            for item in reversed(records["LineageEx"]):
-               if item['Rank']=='family':
-                 family=item['ScientificName']
-        if family==None:
-          error.extend(names)
-          print("ERROR: Taxon '{}' family was not found: {}".format(taxon,",".join(names)))
-          for name in names:
-            log.write("\n{}\n'{}' match cell_org!\n".format(name,name))
-            log.write("'{}' taxon: {}\n".format(name,taxon))
-            log.write("'{}' taxon rank: {}\n".format(name,rank))
-            log.write("'{}' ERROR: Taxon '{}' family was not found!\n".format(name,taxon))
-        else:
-          fam_dir=get_path(folder,family)
-          if fam_dir==False:
-              names=str(subprocess.check_output("grep '{}' {} | cut -f{} | sort -u".format(taxon,table,headers.index("HMM")+1), shell=True))[2:-1].split("\\n")
+            log.write("'{}' family: {}\n".format(name,family[0]))
+            log.write("'{}' ERROR: Missing family folder: {}\n".format(name,os.path.join(folder,family[0])))
+      else:
+        proteins=str(subprocess.check_output("grep '{}' {} | cut -f{} | sort -u".format(taxon,table,headers.index("Protein")+1), shell=True))[2:-1].split("\\n")
+        proteins.remove("")
+        for protein in proteins:
+          prot_file=''
+          prot_dir=get_path(fam_dir,protein)
+          if prot_dir==False:
+            n=0
+            for filename in os.listdir(fam_dir):
+              if os.path.isdir(os.path.join(fam_dir,filename)) and filename.replace(" ","_").lower() in protein.replace(" ","_").lower():
+                if len(filename)>n:
+                  prot_dir=os.path.join(fam_dir,filename)
+                  n=len(filename)
+              if os.path.isdir(os.path.join(fam_dir,filename)) and protein.replace(" ","_").lower() in filename.replace(" ","_").lower():
+                if len(protein)>n:
+                  prot_dir=os.path.join(fam_dir,filename)
+                  n=len(protein)
+          if prot_dir==False:
+            names=str(subprocess.check_output("grep '{}' {} | grep '{}' | cut -f{} | sort -u".format(taxon,table,protein,headers.index("HMM")+1), shell=True))[2:-1].split("\\n")
+            names.remove("")
+            error.extend(names)
+            print("ERROR: Missing protein folder '{}/{}': {}".format(os.path.split(fam_dir)[-1],protein.replace(" ","_").lower(),",".join(names)))
+            for name in names:
+              pass
+              log.write("\n{}\n'{}' match cell_org!\n".format(name,name))
+              log.write("'{}' taxon: {}\n".format(name,taxon))
+              log.write("'{}' taxon rank: {}\n".format(name,rank))
+              log.write("'{}' family: {}\n".format(name,family))
+              log.write("'{}' protein: {}\n".format(name,protein))
+              log.write("'{}' ERROR: Missing protein folder: {}\n".format(name,os.path.join(fam_dir,protein.replace(" ","_").lower())))
+          else:
+            seq_dir=None
+            if rank=='subfamily':
+              path=os.path.join("full-length","tabajara_narrow_subfamilies","fastas")
+              if os.path.isdir(os.path.join(prot_dir,"full-length","tabajara_narrow_subfamilies","fastas")):
+                seq_dir=os.path.join(prot_dir,"full-length","tabajara_narrow_subfamilies","fastas")
+            else:
+              path="fasta_sequences"
+              if os.path.isdir(os.path.join(prot_dir,"fasta_sequences")):
+                seq_dir=os.path.join(prot_dir,"fasta_sequences")
+            if seq_dir==None:
+              names=str(subprocess.check_output("grep '{}' {} | grep '{}' | cut -f{} | sort -u".format(taxon,table,protein,headers.index("HMM")+1), shell=True))[2:-1].split("\\n")
               names.remove("")
               error.extend(names)
-              print("ERROR: Missing family '{}' folder: {}".format(family,",".join(names)))
+              print("ERROR: Missing sequences folder '{}': {}".format(path,",".join(names)))
               for name in names:
                 pass
                 log.write("\n{}\n'{}' match cell_org!\n".format(name,name))
                 log.write("'{}' taxon: {}\n".format(name,taxon))
                 log.write("'{}' taxon rank: {}\n".format(name,rank))
                 log.write("'{}' family: {}\n".format(name,family))
-                log.write("'{}' ERROR: Missing family folder: {}\n".format(name,os.path.join(folder,family)))
-          else:
-            proteins=str(subprocess.check_output("grep '{}' {} | cut -f{} | sort -u".format(taxon,table,headers.index("Protein")+1), shell=True))[2:-1].split("\\n")
-            proteins.remove("")
-            for protein in proteins:
-              prot_file=''
-              prot_dir=get_path(fam_dir,protein)
-              if prot_dir==False:
-                n=0
-                for filename in os.listdir(fam_dir):
-                  if os.path.isdir(os.path.join(fam_dir,filename)) and filename.replace(" ","_").lower() in protein.replace(" ","_").lower():
-                    if len(filename)>n:
-                      prot_dir=os.path.join(fam_dir,filename)
-                      n=len(filename)
-                  if os.path.isdir(os.path.join(fam_dir,filename)) and protein.replace(" ","_").lower() in filename.replace(" ","_").lower():
-                    if len(protein)>n:
-                      prot_dir=os.path.join(fam_dir,filename)
-                      n=len(protein)
-              if prot_dir==False:
-                names=str(subprocess.check_output("grep '{}' {} | grep '{}' | cut -f{} | sort -u".format(taxon,table,protein,headers.index("HMM")+1), shell=True))[2:-1].split("\\n")
-                names.remove("")
+                log.write("'{}' protein: {}\n".format(name,protein))
+                log.write("'{}' ERROR: Missing sequences folder: {}\n".format(name,os.path.join(prot_dir,path)))
+            else:
+              names=str(subprocess.check_output("grep '{}' {} | grep '{}' | cut -f{} | sort -u".format(taxon,table,protein,headers.index("HMM")+1), shell=True))[2:-1].split("\\n")
+              names.remove("")
+              if rank=='family':
+                path=os.path.join(seq_dir,"{}_no_redundancy.fasta".format(taxon))
+                prot_file=get_path(seq_dir,"{}_no_redundancy.fasta".format(taxon))
+              else:
+                path=os.path.join(seq_dir,"{}.fasta".format(taxon))
+                prot_file=get_path(seq_dir,"{}.fasta".format(taxon))
+              if prot_file==False:
                 error.extend(names)
-                print("ERROR: Missing protein folder '{}/{}': {}".format(os.path.split(fam_dir)[-1],protein.replace(" ","_").lower(),",".join(names)))
+                path_list=[]
+                folder_path, file_name_ext = os.path.split(path)
+                file_name, file_ext = os.path.splitext(file_name_ext)
+                path_list = folder_path.split(os.path.sep) + [file_name + file_ext]
+                if '' in path_list:
+                  path_list.remove('')
+                i=path_list.index(fam_name)
+                error.extend(names)
+                print("ERROR: Missing protein file '{}': {}".format(os.path.split(path)[-1],",".join(names)))
                 for name in names:
                   pass
                   log.write("\n{}\n'{}' match cell_org!\n".format(name,name))
@@ -899,60 +970,14 @@ def get_vir_db(table,folder,models):
                   log.write("'{}' taxon rank: {}\n".format(name,rank))
                   log.write("'{}' family: {}\n".format(name,family))
                   log.write("'{}' protein: {}\n".format(name,protein))
-                  log.write("'{}' ERROR: Missing protein folder: {}\n".format(name,os.path.join(fam_dir,protein.replace(" ","_").lower())))
+                  log.write("'{}' ERROR: Missing protein file: {}\n".format(name,"/".join(path_list[i:])))
               else:
-                seq_dir=None
-                if rank=='subfamily':
-                  path=os.path.join("full-length","tabajara_narrow_subfamilies","fastas")
-                  if os.path.isdir(os.path.join(prot_dir,"full-length","tabajara_narrow_subfamilies","fastas")):
-                    seq_dir=os.path.join(prot_dir,"full-length","tabajara_narrow_subfamilies","fastas")
-                else:
-                  path="fasta_sequences"
-                  if os.path.isdir(os.path.join(prot_dir,"fasta_sequences")):
-                    seq_dir=os.path.join(prot_dir,"fasta_sequences")
-                if seq_dir==None:
-                  names=str(subprocess.check_output("grep '{}' {} | grep '{}' | cut -f{} | sort -u".format(taxon,table,protein,headers.index("HMM")+1), shell=True))[2:-1].split("\\n")
-                  names.remove("")
-                  error.extend(names)
-                  print("ERROR: Missing sequences folder '{}': {}".format(path,",".join(names)))
-                  for name in names:
-                    pass
-                    log.write("\n{}\n'{}' match cell_org!\n".format(name,name))
-                    log.write("'{}' taxon: {}\n".format(name,taxon))
-                    log.write("'{}' taxon rank: {}\n".format(name,rank))
-                    log.write("'{}' family: {}\n".format(name,family))
-                    log.write("'{}' protein: {}\n".format(name,protein))
-                    log.write("'{}' ERROR: Missing sequences folder: {}\n".format(name,os.path.join(prot_dir,path)))
-                else:
-                  names=str(subprocess.check_output("grep '{}' {} | grep '{}' | cut -f{} | sort -u".format(taxon,table,protein,headers.index("HMM")+1), shell=True))[2:-1].split("\\n")
-                  names.remove("")
-                  if rank=='family':
-                    path=os.path.join(seq_dir,"{}_no_redundancy.fasta".format(taxon))
-                    prot_file=get_path(seq_dir,"{}_no_redundancy.fasta".format(taxon))
-                  else:
-                    path=os.path.join(seq_dir,"{}.fasta".format(taxon))
-                    prot_file=get_path(seq_dir,"{}.fasta".format(taxon))
-                  if prot_file==False:
-                    error.extend(names)
-                    path_list=os.path.split(path)
-                    i=path_list.index(family)
-                    error.extend(names)
-                    print("ERROR: Missing protein file '{}': {}".format(os.path.split(prot_file)[-1],",".join(names)))
-                    for name in names:
-                      pass
-                      log.write("\n{}\n'{}' match cell_org!\n".format(name,name))
-                      log.write("'{}' taxon: {}\n".format(name,taxon))
-                      log.write("'{}' taxon rank: {}\n".format(name,rank))
-                      log.write("'{}' family: {}\n".format(name,family))
-                      log.write("'{}' protein: {}\n".format(name,protein))
-                      log.write("'{}' ERROR: Missing protein file: {}\n".format(name,os.path.join(path_list[i:])))
-                  else:
-                    for name in names:
-                      valid.append(name)
-                      vir_db[name]=prot_file
-                      taxonomy[name]={'Rank':rank,'Taxon':taxon,'Protein':protein}
-                      if not family=='':
-                        taxonomy[name]['Family']=family
+                for name in names:
+                  valid.append(name)
+                  vir_db[name]=prot_file
+                  taxonomy[name]={'Rank':rank,'Taxon':taxon,'Protein':protein}
+                  if not family=='':
+                    taxonomy[name]['Family']=fam_name
   error=sorted(list(set(error)))
   if len(error)>0:
     print("ERROR: {} HMM models were invalidated because no corresponding taxon folder/protein file found!".format(len(error)))
@@ -990,7 +1015,6 @@ def compare_scores(cell_org,vir,pt,i,o,name):
     V = get_score(name,vir,"min",indexes[1])
   except Exception as e: 
     log.write("INVALID: No '{}' vir matches that satisfy reporting thresholds!\n".format(name))
-    ##print("INVALID: No '{}' vir matches that satisfy reporting thresholds!".format(name))
     key="invalidated because had no vir matches"
     if not key in finalresults.keys():
       finalresults[key]=[name]
@@ -1007,7 +1031,6 @@ def compare_scores(cell_org,vir,pt,i,o,name):
         C = get_score(name,cell_org,"max",indexes[1])
       except Exception as e: 
         log.write("INVALID: No '{}' cell_org matches that satisfy reporting thresholds!\n".format(name))
-        ##print("INVALID: No '{}' cell_org matches that satisfy reporting thresholds!".format(name))
         
         key="invalidated because had no cell_org matches"
         if not key in finalresults.keys():
@@ -1075,6 +1098,8 @@ def validate_recall(path,name,fasta,pd):
     elif not name in finalresults[key]:
       finalresults[key].append(name)
     valid=False
+    table=os.path.join(param['out'],'cell_org','hmm-prospector','table2.csv')
+    invalidated_csv(name,table)
   else:
     total=int(str(subprocess.check_output("grep '>' {}| wc -l".format(fasta), shell=True)).replace("b'","").replace("\\n'","").split()[0])
     if match/total*100<pd:
@@ -1087,6 +1112,8 @@ def validate_recall(path,name,fasta,pd):
       elif not name in finalresults[key]:
         finalresults[key].append(name)
       valid=False
+      table=os.path.join(param['out'],'cell_org','hmm-prospector','table2.csv')
+      invalidated_csv(name,table)
     else:
       log.write("'{}' recall detection percentage {:.1f}% > {:.1f}% (-pd)!\n".format(name,match/total*100,pd))
       key="validated with adjusted cutoff score"
@@ -1095,6 +1122,60 @@ def validate_recall(path,name,fasta,pd):
       elif not name in finalresults[key]:
         finalresults[key].append(name)
   return valid 
+
+def invalidated_csv(model,table):
+  valid=True
+  if not os.path.isfile(os.path.join(param['out'],'invalidated.csv')):
+    try:
+      itaxons=open(os.path.join(param['out'],'invalidated.csv'),"w")
+    except:
+      print("'{}' ERROR:'invalidated.csv' was not created!".format(model))
+      log.write("'{}' ERROR:'invalidated.csv' was not created!\n".format(model))
+      error.append(model)
+      valid=False
+    else:
+      log.write("\n'invalidated.csv' was created!\n")
+      try:
+        itaxons.write("Model")
+      except:
+        print("'{}' ERROR:'invalidated.csv' was not written!".format(model))
+        log.write("'{}' ERROR:'invalidated.csv' was not written!\n".format(model))
+        error.append(model)
+        valid=False
+      else:
+        itaxons.write("\t")
+        itaxons.write("Protein")
+        itaxons.write("\t")
+        itaxons.write("Taxon")
+        itaxons.write("\t")
+        itaxons.write("Family")
+        itaxons.write("\n")
+  else:
+    itaxons=open(os.path.join(param['out'],'invalidated.csv'),"a")
+  try:
+    itaxons.write(model)
+  except:
+    print("'{}' ERROR:'invalidated.csv' was not written!".format(model))
+    log.write("'{}' ERROR:'invalidated.csv' was not written!\n".format(model))
+    error.append(model)
+    valid=False
+  else:
+    itaxons.write("\t")
+    headers=str(subprocess.check_output("head {} -n 1".format(table), shell=True))[2:-1].replace("\\n","").split("\\t")
+    protein=str(subprocess.check_output("grep '{}' {} | cut -f{} | sort -u".format(model,table,headers.index("Protein")+1), shell=True))[2:-1].split("\\n")
+    itaxons.write(protein[0])
+    itaxons.write("\t")
+    taxon=str(subprocess.check_output("grep '{}' {} | cut -f{} | sort -u".format(model,table,headers.index("Taxon")+1), shell=True))[2:-1].split("\\n")
+    itaxons.write(taxon[0])
+    itaxons.write("\t")
+    rank,family=fetch_taxonomy(taxon, [model])
+    if not family==[]:
+      if isinstance(family, list):
+        itaxons.write(family[0])
+      else:
+        itaxons.write(family)
+    itaxons.write("\n")
+  itaxons.close()
 
 if not len(sys.argv)>1:
     print_help()
@@ -1203,6 +1284,10 @@ else:
                   valid,positive=parse_table(name,o,i,match)
                   finalresults["positive for OrgCell"]=positive
                   print("{} positive for OrgCell = invalidated".format(len(set(finalresults["positive for OrgCell"]))))
+                  if not positive==[]:
+                    for model in positive:
+                      table=os.path.join(param['out'],'cell_org','hmm-prospector','table2.csv')
+                      invalidated_csv(model,table)
                   #file="{}/cell_org/hmm-prospector/hmmsearch_results/final.tab".format(param["out"])
                   #positive=get_names(file)
                   if valid and not positive==[]:
@@ -1239,18 +1324,27 @@ else:
                   if call_fetch(name,o,i,match,positive,True):
                     if os.path.isfile("{}/results/valid_HMMs_list.txt".format(param['out'])):
                       validated.extend(open("{}/results/valid_HMMs_list.txt".format(param['out']),"r").read().split("\n"))
+                      removed=0
                       for model in validated:
-                        if "vHMM_" in model:
-                          key="negative for OrgCell"
-                          if not key in finalresults.keys():
-                            finalresults[key]=[model]
-                          elif not name in finalresults[key]:
-                            finalresults[key].append(model)
-                          log.write("\n{}\n".format(model))
-                          log.write("'{}' didn't match cell_org!\n".format(model))
-                          log.write("Profile HMM '{}' is valid!\n".format(model))
+                        table=os.path.join(param['out'],'cell_org','hmm-prospector','table2.csv')
+                        result = subprocess.run(["grep", model, table], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True).stdout
+                        if not result=='':
+                          validated.remove(model)
+                          removed+=1
+                        elif "vHMM_" in model:
+                            key="negative for OrgCell"
+                            if not key in finalresults.keys():
+                              finalresults[key]=[model]
+                            elif not name in finalresults[key]:
+                              finalresults[key].append(model)
+                            log.write("\n{}\n".format(model))
+                            log.write("'{}' didn't match cell_org!\n".format(model))
+                            log.write("Profile HMM '{}' is valid!\n".format(model))
                       print("{} negative for OrgCell = validated".format(len(set(finalresults["negative for OrgCell"]))))
                       print("{} positive for OrgCell".format(len(set(finalresults["positive for OrgCell"]))))
+                      if not removed==0:
+                        with open("{}/results/valid_HMMs_list.txt".format(param['out']),"w") as vlist:
+                          vlist.write("\n".join(validated))
                     log.close()
                     log=open(os.path.join(param["out"], 'file.log'),'a')
                     log.write("\n")
@@ -1273,122 +1367,125 @@ else:
                         csv.write("name\tV\tC\tP\tC<P\tV-C\tnew_cutoff_score\told_cutoff_score\tnew>old\n")
                         csv.close()
                         for name in sorted(list(vir_db.keys())):
-                          csv.close()
-                          log.write("\n{}\n".format(name))
-                          log.write("'{}' match cell_org!\n".format(name))
-                          log.write("'{}' HMM model: {}\n".format(name,os.path.join(param['out'],'cell_org','models','{}.hmm'.format(name))))
-                          log.write("'{}' cell_org results: grep '{}' {}\n".format(name,name,os.path.join(param['out'],'cell_org','hmm-prospector','table2.csv')))
-                          log.write("'{}' taxon: {}\n".format(name,taxonomy[name]['Taxon']))
-                          log.write("'{}' taxon rank: {}\n".format(name,taxonomy[name]['Rank']))
-                          if 'Family' in taxonomy[name].keys():
-                            log.write("'{}' family: {}\n".format(name,taxonomy[name]['Family']))
-                          log.write("'{}' protein: {}\n".format(name,taxonomy[name]['Protein']))
-                          log.write("'{}' protein fasta file: {}\n".format(name,vir_db[name]))
-                          if not name=="'":
-                            try:
-                              os.chdir(os.path.join(param['out'],'vir'))
-                            except Exception as e: 
-                              print(e)
-                              print("ERROR: vir directory wasn't opened!")
-                              log.write("\nERROR: vir directory wasn't opened!\n")
-                            else:
-                              db=vir_db[name]
-                              i=os.path.join(param['out'],'cell_org','models','{}.hmm'.format(name))
-                              o=os.path.join(param['out'],'vir',name)
-                              look=os.path.join(param['out'],'vir','{}_prosp_out'.format(name))
-                              start=datetime.now()
-                              cmd=cmd_prospector(param['reads_vir'],db,i,o,"vir")
-                              log.close()
-                              log=open(os.path.join(param["out"], 'file.log'),'a')
-                              if run_prospector(db,i,o,param['reads_vir'],"vir",look,cmd):
-                                #print("'{}' hmm-prospector runtime for {}: {}".format(name,"vir",datetime.now()-start))
-                                log.write("'{}' hmm-prospector runtime for {}: {}\n".format(name,"vir",datetime.now()-start))
-                                log.write("'{}' vir results: {}\n".format(name,os.path.join(param["out"],"vir",name)))
+                          table=os.path.join(param['out'],'cell_org','hmm-prospector','table2.csv')
+                          result = subprocess.run(["grep", name, table], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True).stdout
+                          if not result=='':
+                            csv.close()
+                            log.write("\n{}\n".format(name))
+                            log.write("'{}' match cell_org!\n".format(name))
+                            log.write("'{}' HMM model: {}\n".format(name,os.path.join(param['out'],'cell_org','models','{}.hmm'.format(name))))
+                            log.write("'{}' cell_org results: grep '{}' {}\n".format(name,name,os.path.join(param['out'],'cell_org','hmm-prospector','table2.csv')))
+                            log.write("'{}' taxon: {}\n".format(name,taxonomy[name]['Taxon']))
+                            log.write("'{}' taxon rank: {}\n".format(name,taxonomy[name]['Rank']))
+                            if 'Family' in taxonomy[name].keys():
+                              log.write("'{}' family: {}\n".format(name,taxonomy[name]['Family']))
+                            log.write("'{}' protein: {}\n".format(name,taxonomy[name]['Protein']))
+                            log.write("'{}' protein fasta file: {}\n".format(name,vir_db[name]))
+                            if not name=="'":
+                              try:
+                                os.chdir(os.path.join(param['out'],'vir'))
+                              except Exception as e: 
+                                print(e)
+                                print("ERROR: vir directory wasn't opened!")
+                                log.write("\nERROR: vir directory wasn't opened!\n")
+                              else:
+                                db=vir_db[name]
+                                i=os.path.join(param['out'],'cell_org','models','{}.hmm'.format(name))
+                                o=os.path.join(param['out'],'vir',name)
+                                look=os.path.join(param['out'],'vir','{}_prosp_out'.format(name))
+                                start=datetime.now()
+                                cmd=cmd_prospector(param['reads_vir'],db,i,o,"vir")
                                 log.close()
                                 log=open(os.path.join(param["out"], 'file.log'),'a')
-                                try:
-                                  if not os.path.isdir(os.path.join(param['out'],'new_scores')):
-                                    os.mkdir(os.path.join(param['out'],'new_scores'))
-                                  os.chdir(os.path.join(param['out'],'new_scores'))
-                                except Exception as e: 
-                                  print(e)
-                                  print("ERROR: new_scores directory wasn't created!")
-                                  log.write("\nERROR: new_scores directory wasn't created!\n")
-                                else:
-                                  cell_org="{}/cell_org/hmm-prospector/table1.csv".format(param["out"])
-                                  vir="{}/vir/{}/table1.csv".format(param["out"],name)
-                                  pt=param['pt']
-                                  i=os.path.join(param['out'],'cell_org','models','{}.hmm'.format(name))
-                                  o=os.path.join(os.path.join(param['out'],'new_scores','{}.hmm'.format(name)))
-                                  csv=open(os.path.join(param['out'],'scores.csv'),"a")
-                                  if compare_scores(cell_org,vir,pt,i,o,name):
-                                    csv.close()
-                                    log.close()
-                                    log=open(os.path.join(param["out"], 'file.log'),'a')
-                                    if len(open(o,"r").read())==0 or not os.path.isfile(o):
-                                      log.write("ERROR: Profile HMM file '{}.hmm' with new cutoff score was not created or is empty!\n".format(name))
-                                      print("ERROR: Profile HMM file '{}.hmm' with new cutoff score was not created or is empty!".format(name))
-                                    else:
-                                      log.write("'{}' HMM model with new cutoff score: {}\n".format(name,os.path.join(param['out'],'new_scores','{}.hmm'.format(name))))
-                                      try:
-                                        if not os.path.isdir(os.path.join(param['out'],'recall')):
-                                          os.mkdir(os.path.join(param['out'],'recall'))
-                                        os.chdir(os.path.join(param['out'],'recall'))
-                                      except Exception as e: 
-                                        print(e)
-                                        print("ERROR: Recall directory wasn't created!")
-                                        log.write("\nERROR: Recall directory wasn't created!\n")
-                                        error.append(name)
+                                if run_prospector(db,i,o,param['reads_vir'],"vir",look,cmd):
+                                  #print("'{}' hmm-prospector runtime for {}: {}".format(name,"vir",datetime.now()-start))
+                                  log.write("'{}' hmm-prospector runtime for {}: {}\n".format(name,"vir",datetime.now()-start))
+                                  log.write("'{}' vir results: {}\n".format(name,os.path.join(param["out"],"vir",name)))
+                                  log.close()
+                                  log=open(os.path.join(param["out"], 'file.log'),'a')
+                                  try:
+                                    if not os.path.isdir(os.path.join(param['out'],'new_scores')):
+                                      os.mkdir(os.path.join(param['out'],'new_scores'))
+                                    os.chdir(os.path.join(param['out'],'new_scores'))
+                                  except Exception as e: 
+                                    print(e)
+                                    print("ERROR: new_scores directory wasn't created!")
+                                    log.write("\nERROR: new_scores directory wasn't created!\n")
+                                  else:
+                                    cell_org="{}/cell_org/hmm-prospector/table1.csv".format(param["out"])
+                                    vir="{}/vir/{}/table1.csv".format(param["out"],name)
+                                    pt=param['pt']
+                                    i=os.path.join(param['out'],'cell_org','models','{}.hmm'.format(name))
+                                    o=os.path.join(os.path.join(param['out'],'new_scores','{}.hmm'.format(name)))
+                                    csv=open(os.path.join(param['out'],'scores.csv'),"a")
+                                    if compare_scores(cell_org,vir,pt,i,o,name):
+                                      csv.close()
+                                      log.close()
+                                      log=open(os.path.join(param["out"], 'file.log'),'a')
+                                      if len(open(o,"r").read())==0 or not os.path.isfile(o):
+                                        log.write("ERROR: Profile HMM file '{}.hmm' with new cutoff score was not created or is empty!\n".format(name))
+                                        print("ERROR: Profile HMM file '{}.hmm' with new cutoff score was not created or is empty!".format(name))
                                       else:
-                                        db=vir_db[name]
-                                        i=os.path.join(os.path.join(param['out'],'new_scores','{}.hmm'.format(name)))
-                                        o=os.path.join(param['out'],'recall',name)
-                                        look=os.path.join(param['out'],'recall','{}_prosp_out'.format(name))
-                                        start=datetime.now()
-                                        cmd=cmd_prospector(param['reads_vir'],db,i,o,"recall")
-                                        log.close()
-                                        log=open(os.path.join(param["out"], 'file.log'),'a')
-                                        if run_prospector(db,i,o,param['reads_vir'],"recall",look,cmd):
-                                          #print("'{}' hmm-prospector runtime for {}: {}".format(name,"recall",datetime.now()-start))
-                                          log.write("'{}' hmm-prospector runtime for {}: {}\n".format(name,"recall",datetime.now()-start))
-                                          log.write("'{}' recall results: {}\n".format(name,os.path.join(param["out"],"recall",name)))
+                                        log.write("'{}' HMM model with new cutoff score: {}\n".format(name,os.path.join(param['out'],'new_scores','{}.hmm'.format(name))))
+                                        try:
+                                          if not os.path.isdir(os.path.join(param['out'],'recall')):
+                                            os.mkdir(os.path.join(param['out'],'recall'))
+                                          os.chdir(os.path.join(param['out'],'recall'))
+                                        except Exception as e: 
+                                          print(e)
+                                          print("ERROR: Recall directory wasn't created!")
+                                          log.write("\nERROR: Recall directory wasn't created!\n")
+                                          error.append(name)
+                                        else:
+                                          db=vir_db[name]
+                                          i=os.path.join(os.path.join(param['out'],'new_scores','{}.hmm'.format(name)))
+                                          o=os.path.join(param['out'],'recall',name)
+                                          look=os.path.join(param['out'],'recall','{}_prosp_out'.format(name))
+                                          start=datetime.now()
+                                          cmd=cmd_prospector(param['reads_vir'],db,i,o,"recall")
                                           log.close()
                                           log=open(os.path.join(param["out"], 'file.log'),'a')
-                                          try:
-                                            if not os.path.isdir(os.path.join(param['out'],'results')):
-                                              os.mkdir(os.path.join(param['out'],'results'))
-                                            os.chdir(os.path.join(param['out'],'results'))
-                                          except Exception as e: 
-                                            print(e)
-                                            print("ERROR: Results directory wasn't created!")
-                                            log.write("\nERROR: Results directory wasn't created!\n")
-                                          else:
-                                            path=param['out']
-                                            fasta=vir_db[name]
-                                            pd=param['pd']
-                                            if validate_recall(path,name,fasta,pd):
-                                              validated.append(name)
-                                              try:
-                                                if not os.path.isdir(os.path.join(param['out'],'results','valid')):
-                                                  os.mkdir(os.path.join(param['out'],'results','valid'))
-                                                os.chdir(os.path.join(param['out'],'results','valid'))
-                                              except Exception as e: 
-                                                print(e)
-                                                print("ERROR: Valid directory wasn't created!")
-                                                log.write("\nERROR: Valid directory wasn't created!\n")
-                                              else:
+                                          if run_prospector(db,i,o,param['reads_vir'],"recall",look,cmd):
+                                            #print("'{}' hmm-prospector runtime for {}: {}".format(name,"recall",datetime.now()-start))
+                                            log.write("'{}' hmm-prospector runtime for {}: {}\n".format(name,"recall",datetime.now()-start))
+                                            log.write("'{}' recall results: {}\n".format(name,os.path.join(param["out"],"recall",name)))
+                                            log.close()
+                                            log=open(os.path.join(param["out"], 'file.log'),'a')
+                                            try:
+                                              if not os.path.isdir(os.path.join(param['out'],'results')):
+                                                os.mkdir(os.path.join(param['out'],'results'))
+                                              os.chdir(os.path.join(param['out'],'results'))
+                                            except Exception as e: 
+                                              print(e)
+                                              print("ERROR: Results directory wasn't created!")
+                                              log.write("\nERROR: Results directory wasn't created!\n")
+                                            else:
+                                              path=param['out']
+                                              fasta=vir_db[name]
+                                              pd=param['pd']
+                                              if validate_recall(path,name,fasta,pd):
+                                                validated.append(name)
                                                 try:
-                                                  os.system('cp {}/new_scores/{}.hmm {}/results/valid/{}.hmm'.format(param['out'],name,param['out'],name))
+                                                  if not os.path.isdir(os.path.join(param['out'],'results','valid')):
+                                                    os.mkdir(os.path.join(param['out'],'results','valid'))
+                                                  os.chdir(os.path.join(param['out'],'results','valid'))
                                                 except Exception as e: 
                                                   print(e)
-                                                  print("ERROR: {} file cannot be copied to valid folder!".format(name))
-                                                  log.write("ERROR: {} file cannot be copied to valid folder!\n".format(name))
-                                                  error.append(name)
+                                                  print("ERROR: Valid directory wasn't created!")
+                                                  log.write("\nERROR: Valid directory wasn't created!\n")
                                                 else:
-                                                  #print("Profile HMM '{}' is valid!".format(name))
-                                                  log.write("Profile HMM '{}' is valid!\n".format(name))
-                                                  if not name in validated:
-                                                    validated.append(name)
+                                                  try:
+                                                    os.system('cp {}/new_scores/{}.hmm {}/results/valid/{}.hmm'.format(param['out'],name,param['out'],name))
+                                                  except Exception as e: 
+                                                    print(e)
+                                                    print("ERROR: {} file cannot be copied to valid folder!".format(name))
+                                                    log.write("ERROR: {} file cannot be copied to valid folder!\n".format(name))
+                                                    error.append(name)
+                                                  else:
+                                                    #print("Profile HMM '{}' is valid!".format(name))
+                                                    log.write("Profile HMM '{}' is valid!\n".format(name))
+                                                    if not name in validated:
+                                                      validated.append(name)
                         if "invalidated because the highest Cscore > lowest Vscore" in finalresults.keys():
                           print("{} invalidated because the highest Cscore > lowest Vscore".format(len(set(finalresults["invalidated because the highest Cscore > lowest Vscore"]))))
                         if "invalidated because the highest Cscore > (pt%) x lowest Vscore" in finalresults.keys():
@@ -1407,6 +1504,9 @@ else:
                   log.write("ERROR: List of valid HMMs is empty!\n")
                 else:
                   validated=list(set(validated))
+                  for e in error:
+                    if e in validated:
+                      validated.remove(e)
                   log.write("\n{} valid HMMs: {}\n".format(len(validated),validated))
                   vfile=open("{}/results/valid_HMMs_list.txt".format(param['out']),"w")
                   vfile.write("\n".join(validated))
@@ -1450,39 +1550,6 @@ else:
                   match=["Invalid"]
                   both=False   
                   #log.write("\nInvalid: {}\n".format(negative))    
-                  with open(os.path.join(param['out'],'invalidated.csv'),"w") as itaxons:
-                    maxprot=0
-                    maxtax=0
-                    maxfam=0
-                    maxmod=0
-                    for model in invalidated:
-                      if len(model)>maxmod:
-                        maxmod=len(model)
-                      one=taxonomy[model]
-                      if len(one["Protein"])>maxprot:
-                        maxprot=len(one["Protein"])
-                      if len(one["Taxon"])>maxtax:
-                        maxtax=len(one["Taxon"])
-                      if len(one["Family"])>maxfam:
-                        maxfam=len(one["Family"])
-                    itaxons.write("Model".ljust(maxmod))
-                    itaxons.write(" ")
-                    itaxons.write("Protein".ljust(maxprot))
-                    itaxons.write(" ")
-                    itaxons.write("Taxon".ljust(maxtax))
-                    itaxons.write(" ")
-                    itaxons.write("Family".ljust(maxfam))
-                    itaxons.write("\n")
-                    for model in invalidated:
-                      one=taxonomy[model]
-                      itaxons.write(model.ljust(maxmod))
-                      itaxons.write(" ")
-                      itaxons.write(one["Protein"].ljust(maxprot))
-                      itaxons.write(" ")
-                      itaxons.write(one["Taxon"].ljust(maxtax))
-                      itaxons.write(" ")
-                      itaxons.write(one["Family"].ljust(maxfam))
-                      itaxons.write("\n")
                   call_fetch(name,o,i,match,invalidated,both)
                 error=sorted(list(set(error)))
                 log.write("\n{} profile HMM(s) with validation error: {}\n".format(len(error),error))

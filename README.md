@@ -39,38 +39,42 @@ python model_validator.py -i <hmm_file> -model_type <'l'|'long'|'s'|'short'> -db
 To report bugs, to ask for help and to give any feedback, please contact Arthur Gruber (argruber@usp.br) or Giuliana L. Pola (giulianapola@usp.br).
 
 ## Versions
-### 1.0.10B
+### 11B
+- Generates an invalidated report for a short db, before it only generated a long db
+- Added fetch taxonomy function that searches for different names of a family, like current name and old name
+
+### 10B
 - Changing some warning messages in log.file
 - Correction in the valid_HMMs_list.txt list that did not consider models saved with cutoff readjustment
 
-### 1.0.9B
+### 9B
 - Creation of invalidated.csv CSV file that contains invalidated model, protein, taxon and family
 - Add line break at the end of generated templates
 
-### 1.0.8B
+### 8B
 - Change in the rules for creating the new cutoff score, generated less invalidation of the models
 
-### 1.0.8
+### 8
 - Fixed the error when getting the username to put in the log
 
-### 1.0.7
+### 7
 - Delete validHMMs file
 - Invalid selected.hmm becomes invalid.hmm
 - Valid selected.hmm becomes valid.hmm
 - Log file ends with a summary
 
-### 1.0.6
+### 6
 - Addition of fasta file path in viral database (-virdb) when taxon is subfamily
 - Fixed hmm-prospector default parameters for short sequences (db_type=short)
 - Changed the rank of those who were not matched from “Mismatch” to “No match”
 
-### 1.0.5
+### 5
 - Embedding the get_rank function in the get_vir_db function
 - Using the Bio.Entrez.efetch (db="Taxonomy") package to get the taxon classification and family
 
-### 1.0.4
+### 4
 - Replacement of the requests module with the Bio.Entrez package when getting the taxonomic classification of the taxon (Entrez.efetch)
 - Adding more details about each analyzed model
 
-### 1.0.3
+### 3
 - Correction when getting the lowest viral score (V) 
