@@ -39,6 +39,9 @@ python model_validator.py -i <hmm_file> -model_type <'l'|'long'|'s'|'short'> -db
 To report bugs, to ask for help and to give any feedback, please contact Arthur Gruber (argruber@usp.br) or Giuliana L. Pola (giulianapola@usp.br).
 
 ## Versions
+### 12B
+- Fixed the problem of occasionally not generating the invalidated.csv table because the HMM-Prospector did not complete the table2.csv generation.
+
 ### 11B
 - Generates an invalidated report for a short db, before it only generated a long db
 - Added fetch taxonomy function that searches for different names of a family, like current name and old name
