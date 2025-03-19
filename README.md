@@ -1,5 +1,8 @@
 # model_validator
-model_validator is a tool to validate profile HMMs and adjust their cutoff score
+model_validator is a tool to validate profile HMMs and adjust their cutoff score.
+
+<img src="/workspaces/model_validator/model_validator_pipeline.jpg" width="700" />
+
 
 ##   Instalation
 model_validator does not need to be installed. The user should only download the model_validator.py file.
@@ -39,6 +42,9 @@ python model_validator.py -i <hmm_file> -model_type <'l'|'long'|'s'|'short'> -db
 To report bugs, to ask for help and to give any feedback, please contact Arthur Gruber (argruber@usp.br) or Giuliana L. Pola (giulianapola@usp.br).
 
 ## Versions
+### 13B
+- Fixed program execution failure issue when connection fails
+
 ### 12B
 - Fixed the problem of occasionally not generating the invalidated.csv table because the HMM-Prospector did not complete the table2.csv generation.
 

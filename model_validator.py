@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-version='12B'
+version='13B'
 
 import os
 from datetime import datetime
@@ -458,13 +458,14 @@ def cmd_prospector(parameters,db,i,o,name):
   return cmd
 
 def run_prospector(cmd, o, name, style):
+    log=open(os.path.join(param["out"], 'file.log'),'a')
     valid=True
     try:
       with open("{}_prosp_out".format(name), 'w') as stdout_file, open("{}_prosp_er".format(name), 'w') as stderr_file:
         proc = subprocess.Popen(cmd.split(), stdout=stdout_file, stderr=stderr_file)
         proc.wait()
     except Exception as e:
-      log.write("{}\n".format(e))
+      log.write("ERRO:{}\n".format(e))
       error_file = re.search(r'2>(\S+)', cmd).group(1)
       if not style=='':
           error_msg = "ERROR: '{}' {} hmm-prospector.pl command failed, look {}/{}/{}!\n".format(name, style, name, "hmm-prospector",error_file)
@@ -481,20 +482,31 @@ def run_prospector(cmd, o, name, style):
         filename = os.path.join(o,name, 'table2.csv')
       #log.write("'{}' match table: {}\n".format(name, filename))
       wait_time = 0
+      i=1
       while not os.path.exists(filename):
-          if wait_time >= 300:
+          if i>5:
               if not style=='':
-                  error_msg = "ERROR: '{}' {} table2.csv was not created!".format(name, style)
+                  timeout_msg = "ERROR: '{}' {} table2.csv don't exist! Giving up...".format(name, style)
               else:
-                  error_msg = "ERROR: '{}' table2.csv was not created!".format(name)
+                  timeout_msg = "ERROR: '{}' table2.csv don't exist! Giving up...".format(name)
               
-              log.write(error_msg + "\n")
+              log.write(timeout_msg + "\n")
               print(error_msg)
-
+    
               valid=False
               break
-          time.sleep(60)
-          wait_time += 60
+          else:
+              if not style=='':
+                  timeout_msg = "ERROR: '{}' {} table2.csv was not created!\nWaiting {} minutes to search again...".format(name, style,str(i))
+              else:
+                  error_msg = "ERROR: '{}' table2.csv was not created!\nWaiting {} minutes to search again...".format(name,str(i))
+              log.write(error_msg + "\n")
+              print(error_msg)
+              log.close()
+          time.sleep(60*i)
+          wait_time += 60*i
+          i+=1
+          log=open(os.path.join(param["out"], 'file.log'),'a')
       if os.path.exists(filename):
         log.write("'{}' table2.csv file was created in {}!\n".format(name, "/".join(filename.split()[-2:])))
     return valid
@@ -595,7 +607,7 @@ def list_HMMs(name,match,o,positive):
       mfile.write('\n'.join(positive))
       mfile.close()
     except Exception as e: 
-      log.write("{}\n".format(e))
+      log.write("ERRO:{}\n".format(e))
       if not name=='':
         print("ERROR: List of {} HMMs for {} could not be written!".format(match.lower(),name))
         log.write("ERROR: List of {} HMMs for {} could not be written!\n".format(match.lower(),name))
@@ -614,7 +626,7 @@ def validate_database(d):
   try:
     dfile=open(d,"r")
   except Exception as e: 
-    log.write("{}\n".format(e))
+    log.write("ERRO:{}\n".format(e))
     print("ERROR: Profile HMM dataset couldn't be opened!")
     valid=False
   else:
@@ -632,7 +644,7 @@ def fetch_hmm(namelist,d,o):
     try:
       os.mkdir(o)
     except Exception as e: 
-      log.write("{}\n".format(e))
+      log.write("ERRO:{}\n".format(e))
       print("ERROR: '{}' directory was not created!".format(os.path.split(o)[-1]))
       log.write("ERROR: '{}' directory was not created!\n".format(os.path.split(o)[-1]))
       valid=False
@@ -660,7 +672,7 @@ def fetch_hmm(namelist,d,o):
               hmmfile=open(os.path.join(o, '{}.hmm'.format(name)),'w')
               hmmfile.write("")
             except Exception as e: 
-              log.write("{}\n".format(e))
+              log.write("ERRO:{}\n".format(e))
               print("ERROR: '{}' HMM file was not created!".format(name))
               log.write("ERROR: '{}' HMM file was not created!\n".format(name))
               valid=False
@@ -679,7 +691,7 @@ def fetch_hmm(namelist,d,o):
             selectedfile=open(os.path.join(o, '{}.hmm'.format(filename)),'w')
             selectedfile.write("")
           except Exception as e: 
-            log.write("{}\n".format(e))
+            log.write("ERRO:{}\n".format(e))
             print("ERROR: Selected HMM file was not created!")
             log.write("ERROR: Selected HMM file was not created!\n")
             valid=False
@@ -748,7 +760,7 @@ def call_fetch(name,o,i,match,positive,both):
           try:
             os.mkdir(os.path.join(o,"results"))
           except Exception as e:
-            log.write("{}\n".format(e))
+            log.write("ERRO:{}\n".format(e))
             error.extend(negative)
             print("ERROR: 'results' directory was not created!")
             log.write("ERROR: 'results' directory was not created!\n")
@@ -791,15 +803,19 @@ def call_fetch(name,o,i,match,positive,both):
   return valid
   
 def get_path(path,name):
-  folders=os.listdir(path)
+  result=False
   try:
-    idx = [item.lower() for item in folders].index(name.lower())
+    folders=os.listdir(path)
   except Exception as e: 
     return False
   else:
-    return os.path.join(path,folders[idx])
+    for item in folders:
+      if name.lower()==item.lower():
+        result=os.path.join(path,item)
+    return result
 
 def fetch_taxonomy(taxon,names):
+    log=open(os.path.join(param["out"], 'file.log'),'a')
     if taxon==['']:
       return '',[]
     else:
@@ -811,31 +827,42 @@ def fetch_taxonomy(taxon,names):
       handle = None
       rank=None
       family=[]
-      for n in range(3):
+      for n in range(5):
           try:
               handle = Entrez.esearch(db="Taxonomy", term=taxon)
               record = Entrez.read(handle)
               if len(record['IdList']) > 0:
                   taxon_id = record['IdList'][0]
                   handle = Entrez.efetch(db="Taxonomy", id=taxon_id, retmode="xml")
-                  break
           except Exception as e:
-              log.write("{}\n".format(e))
+              print("ERRO: {}!\nWaiting {} minutes to connect again...".format(e,str((n+1)*5)))
+              log.write("ERRO: {}!\nWaiting {} minutes to connect again...\n".format(e,str((n+1)*5)))
+              log.close()
               handle = None
-              time.sleep(1)
+              time.sleep(5*60*(n+1))
+              log=open(os.path.join(param["out"], 'file.log'),'a')
+          else:
+            break
       if handle is None:
           error.extend(names)
-          print("ERROR: Failure in the connection with NCBI: {}".format(",".join(names)))
+          print("ERROR: Failure in the connection with NCBI! Giving up: {}".format(",".join(names)))
           for name in names:
               log.write("\n{}\n'{}' match cell_org!\n".format(name,name))
               log.write("'{}' taxon: {}\n".format(name,taxon))
-              log.write("'{}' ERROR: Failure in the connection with NCBI!\n".format(name))
+              log.write("'{}' ERROR: Failure in the connection with NCBI! Giving up...\n".format(name))
       else:
         records = Entrez.read(handle)[0]
         rank = records.get("Rank")
         lineage = records.get("LineageEx", [])
         family = []
-        if rank == 'family':
+        if rank== None:
+          error.extend(names)
+          print(" ERROR: Taxon '{}' rank was not found: {}".format(taxon,",".join(names)))
+          for name in names:
+              log.write("\n{}\n'{}' match cell_org!\n".format(name,name))
+              log.write("'{}' taxon: {}\n".format(name,taxon))
+              log.write("'{}' ERROR: Taxon '{}' rank was not found!\n".format(name,taxon))
+        elif rank == 'family':
             family = [records.get("ScientificName")]
             if "OtherNames" in records:
               family.extend(records["OtherNames"]["Synonym"])
@@ -848,12 +875,13 @@ def fetch_taxonomy(taxon,names):
                 log.write("\n{}\n'{}' match cell_org!\n".format(name,name))
                 log.write("'{}' taxon: {}\n".format(name,taxon))
                 log.write("'{}' ERROR: Taxon '{}' rank is not genus or family or subfamily!\n".format(name,records.get("ScientificName")))
-        for item in reversed(lineage):
-              if item['Rank'] == 'family':
-                  family=[item['ScientificName']]
-                  if "OtherNames" in item:
-                    family.extend(item["OtherNames"]["Synonym"])
-                  break
+        else:
+          for item in reversed(lineage):
+                if item['Rank'] == 'family':
+                    family=[item['ScientificName']]
+                    if "OtherNames" in item:
+                      family.extend(item["OtherNames"]["Synonym"])
+                    break
         
         handle.close()
         
@@ -871,19 +899,18 @@ def get_vir_db(table,folder,models):
   error=[]
   taxons=[]
   vir_db=dict()
-  fam_dir=''
-  prot_dir=''
+  fam_dir=False
+  prot_dir=False
   headers=str(subprocess.check_output("head {} -n 1".format(table), shell=True))[2:-1].replace("\\n","").split("\\t")
   taxons=str(subprocess.check_output("cut -f{} {} | sort -u".format(headers.index("Taxon")+1,table), shell=True))[2:-1].split("\\n")
   names=str(subprocess.check_output("grep 'vHMM_' {} | cut -f{} | sort -u".format(table,headers.index("HMM")+1), shell=True))[2:-1].split("\\n")
   taxons.remove("")
   taxons.remove("Taxon")
   for taxon in taxons:
-    family=None
     names=str(subprocess.check_output("grep '{}' {} | cut -f{} | sort -u".format(taxon,table,headers.index("HMM")+1), shell=True))[2:-1].split("\\n")
     names.remove("")
     family=[]
-    rank=''
+    rank=False
     rank,family=fetch_taxonomy(taxon, names)
     if family==[]:
       error.extend(names)
@@ -894,24 +921,21 @@ def get_vir_db(table,folder,models):
         log.write("'{}' taxon rank: {}\n".format(name,rank))
         log.write("'{}' ERROR: Taxon '{}' family was not found!\n".format(name,taxon))
     else:
-      fam_dir==False
+      fam_dir=False
       i=0
-      fam_name=''
+      fam_name=False
       if isinstance(family, list):
         if len(family)==1:
-          fam_dir=get_path(folder,family[0])
           fam_name=family[0]
+          fam_dir=get_path(folder,fam_name)
         else:
           while fam_dir==False and i<len(family):
-            print("i={}".format(i))
             fam_name=family[i]
             fam_dir=get_path(folder,fam_name)
-            print("fam_dir:{}".format(fam_dir))
             i+=1
       else:
         fam_dir=get_path(folder,family)
         fam_name=family
-        print("fam_dir:{}".format(fam_dir))
       if fam_dir==False:
           names=str(subprocess.check_output("grep '{}' {} | cut -f{} | sort -u".format(taxon,table,headers.index("HMM")+1), shell=True))[2:-1].split("\\n")
           names.remove("")
@@ -923,7 +947,7 @@ def get_vir_db(table,folder,models):
             log.write("'{}' taxon: {}\n".format(name,taxon))
             log.write("'{}' taxon rank: {}\n".format(name,rank))
             log.write("'{}' family: {}\n".format(name,family[0]))
-            log.write("'{}' ERROR: Missing family folder: {}\n".format(name,os.path.join(folder,family[0])))
+            log.write("'{}' ERROR: Missing family folder: {}\n".format(name,os.path.join(folder,fam_name)))
       else:
         proteins=str(subprocess.check_output("grep '{}' {} | cut -f{} | sort -u".format(taxon,table,headers.index("Protein")+1), shell=True))[2:-1].split("\\n")
         proteins.remove("")
@@ -1012,6 +1036,7 @@ def get_vir_db(table,folder,models):
                   taxonomy[name]={'Rank':rank,'Taxon':taxon,'Protein':protein}
                   if not family=='':
                     taxonomy[name]['Family']=fam_name
+    taxon=''
   error=sorted(list(set(error)))
   if len(error)>0:
     print("ERROR: {} HMM models were invalidated because no corresponding taxon folder/protein file found!".format(len(error)))
@@ -1109,7 +1134,7 @@ def compare_scores(cell_org,vir,pt,i,o,name):
                 out=open(o,"w")
                 out.write("")
               except Exception as e:
-                log.write("{}\n".format(e))
+                log.write("ERRO:{}\n".format(e))
                 log.write("ERROR: Profile HMM file '{}.hmm' with new cutoff score was not created!\n".format(name))
                 print("ERROR: Profile HMM file '{}.hmm' with new cutoff score was not created!".format(name))
                 error.append(name)
@@ -1164,7 +1189,7 @@ def invalidated_csv(model,table):
     try:
       itaxons=open(os.path.join(param['out'],'invalidated.csv'),"w")
     except Exception as e:
-      log.write("{}\n".format(e))
+      log.write("ERRO:{}\n".format(e))
       print("'{}' ERROR:'invalidated.csv' was not created!".format(model))
       log.write("'{}' ERROR:'invalidated.csv' was not created!\n".format(model))
       error.append(model)
@@ -1174,7 +1199,7 @@ def invalidated_csv(model,table):
       try:
         itaxons.write("Model")
       except Exception as e:
-        log.write("{}\n".format(e))
+        log.write("ERRO:{}\n".format(e))
         print("'{}' ERROR:'invalidated.csv' was not written!".format(model))
         log.write("'{}' ERROR:'invalidated.csv' was not written!\n".format(model))
         error.append(model)
@@ -1192,7 +1217,7 @@ def invalidated_csv(model,table):
   try:
     itaxons.write(model)
   except Exception as e:
-    log.write("{}\n".format(e))
+    log.write("ERRO:{}\n".format(e))
     print("'{}' ERROR:'invalidated.csv' was not written!".format(model))
     log.write("'{}' ERROR:'invalidated.csv' was not written!\n".format(model))
     error.append(model)
@@ -1238,14 +1263,14 @@ else:
           log=open(os.path.join(param["out"], 'file.log'),'w')
           log.write('model_validator v{}\n'.format(version))
         except Exception as e: 
-          log.write("{}\n".format(e))
+          log.write("ERRO:{}\n".format(e))
           print('ERROR: Log file was not created!')
         else:
-          log.write('\nDatetime:\n{}\n'.format(start_time.strftime("%d/%m/%Y, %H:%M:%S")))
+          log.write('\nStart time: {}\n'.format(start_time.strftime("%d/%m/%Y, %H:%M:%S")))
           
-          log.write('\nWorking directory:\n{}\n'.format(call))
+          log.write('\nWorking directory: {}\n'.format(call))
           
-          log.write('\nCommand line:\n{}\n'.format(' '.join(sys.argv)))
+          log.write('\nCommand line: {}\n'.format(' '.join(sys.argv)))
           
           user=""
           try:
@@ -1265,7 +1290,7 @@ else:
           else:
             pass
           if not user=="":
-            log.write('\nUser:\n{}\n'.format(user))
+            log.write('\nUser: {}\n'.format(user))
           
           log.write('\nParameters:\n')
           for key in sorted(args.keys()):
@@ -1282,7 +1307,7 @@ else:
               os.mkdir(os.path.join(param['out'],'cell_org'))
             os.chdir(os.path.join(param['out'],'cell_org'))
           except Exception as e: 
-            log.write("{}\n".format(e))
+            log.write("ERRO:{}\n".format(e))
             print("ERROR: cell_org directory wasn't created!")
             log.write("\nERROR: cell_org directory wasn't created!\n")
           else:
@@ -1294,6 +1319,7 @@ else:
             name='cell_org'
             start=datetime.now()
             cmd=cmd_prospector(param['reads_cell'],db,i,o,name)
+            log.write("Running cell_org hmm-prospector: {}\n".format(datetime.now().strftime("%d/%m/%Y, %H:%M:%S")))
             log.close()
             log=open(os.path.join(param["out"], 'file.log'),'a')
             if run_prospector(cmd, o, name, ''):
@@ -1318,6 +1344,9 @@ else:
                   i=param['i']
                   match="Invalid"
                   positive=[]
+                  log.write("Parsing cell_org table: {}\n".format(datetime.now().strftime("%d/%m/%Y, %H:%M:%S")))
+                  log.close()
+                  log=open(os.path.join(param["out"], 'file.log'),'a')
                   valid,positive=parse_table(name,o,i,match)
                   finalresults["positive for OrgCell"]=positive
                   print("{} positive for OrgCell = invalidated".format(len(set(finalresults["positive for OrgCell"]))))
@@ -1344,14 +1373,15 @@ else:
                             log.write("Profile HMM '{}' is valid!\n".format(model))
                         print("{} negative for OrgCell = validated".format(len(set(finalresults["negative for OrgCell"]))))
               elif param['db_type']=='long':
-                log.close()
-                log=open(os.path.join(param["out"], 'file.log'),'a')
                 log.write("\n")
                 name='cell_org'
                 o=param['out']
                 i=param['i']
                 match="Match"
                 positive=[]
+                log.write("Parsing cell_org table: {}\n".format(name,datetime.now().strftime("%d/%m/%Y, %H:%M:%S")))
+                log.close()
+                log=open(os.path.join(param["out"], 'file.log'),'a')
                 valid,positive=parse_table(name,o,i,match)
                 finalresults["positive for OrgCell"]=positive
                 #file="{}/cell_org/hmm-prospector/hmmsearch_results/final.tab".format(param["out"])
@@ -1382,12 +1412,13 @@ else:
                       if not removed==0:
                         with open("{}/results/valid_HMMs_list.txt".format(param['out']),"w") as vlist:
                           vlist.write("\n".join(validated))
-                    log.close()
-                    log=open(os.path.join(param["out"], 'file.log'),'a')
                     log.write("\n")
                     table=os.path.join(param['out'],'cell_org','hmm-prospector','table2.csv')
                     folder=param['vir_db']
                     models=os.path.join(param['out'],'cell_org','models')
+                    log.write("Building vir_db: {}\n".format(datetime.now().strftime("%d/%m/%Y, %H:%M:%S")))
+                    log.close()
+                    log=open(os.path.join(param["out"], 'file.log'),'a')
                     vir_db,error=get_vir_db(table,folder,models)
                     if not vir_db==False:
                       log.close()
@@ -1395,7 +1426,7 @@ else:
                         if not os.path.isdir(os.path.join(param['out'],'vir')):
                           os.mkdir(os.path.join(param['out'],'vir'))
                       except Exception as e: 
-                        log.write("{}\n".format(e))
+                        log.write("ERRO:{}\n".format(e))
                         print("ERROR: vir directory wasn't created!")
                         log.write("\nERROR: vir directory wasn't created!\n")
                       else:
@@ -1422,7 +1453,7 @@ else:
                               try:
                                 os.chdir(os.path.join(param['out'],'vir'))
                               except Exception as e: 
-                                log.write("{}\n".format(e))
+                                log.write("ERRO:{}\n".format(e))
                                 print("ERROR: vir directory wasn't opened!")
                                 log.write("\nERROR: vir directory wasn't opened!\n")
                               else:
@@ -1431,6 +1462,7 @@ else:
                                 o=os.path.join(param['out'],'vir')
                                 start=datetime.now()
                                 cmd=cmd_prospector(param['reads_vir'],db,i,o,name)
+                                log.write("'{}' Running vir hmm-prospector: {}\n".format(name,datetime.now().strftime("%d/%m/%Y, %H:%M:%S")))
                                 log.close()
                                 log=open(os.path.join(param["out"], 'file.log'),'a')
                                 if run_prospector(cmd, o, name, ''):
@@ -1444,7 +1476,7 @@ else:
                                       os.mkdir(os.path.join(param['out'],'new_scores'))
                                     os.chdir(os.path.join(param['out'],'new_scores'))
                                   except Exception as e: 
-                                    log.write("{}\n".format(e))
+                                    log.write("ERRO:{}\n".format(e))
                                     print("ERROR: new_scores directory wasn't created!")
                                     log.write("\nERROR: new_scores directory wasn't created!\n")
                                   else:
@@ -1468,7 +1500,7 @@ else:
                                             os.mkdir(os.path.join(param['out'],'recall'))
                                           os.chdir(os.path.join(param['out'],'recall'))
                                         except Exception as e: 
-                                          log.write("{}\n".format(e))
+                                          log.write("ERRO:{}\n".format(e))
                                           print("ERROR: Recall directory wasn't created!")
                                           log.write("\nERROR: Recall directory wasn't created!\n")
                                           error.append(name)
@@ -1478,6 +1510,7 @@ else:
                                           o=os.path.join(param['out'],'recall')
                                           start=datetime.now()
                                           cmd=cmd_prospector(param['reads_vir'],db,i,o,name)
+                                          log.write("'{}' Running recall hmm-prospector: {}\n".format(name,datetime.now().strftime("%d/%m/%Y, %H:%M:%S")))
                                           log.close()
                                           log=open(os.path.join(param["out"], 'file.log'),'a')
                                           if run_prospector(cmd, o, name, "recall"):
@@ -1491,7 +1524,7 @@ else:
                                                 os.mkdir(os.path.join(param['out'],'results'))
                                               os.chdir(os.path.join(param['out'],'results'))
                                             except Exception as e: 
-                                              log.write("{}\n".format(e))
+                                              log.write("ERRO:{}\n".format(e))
                                               print("ERROR: Results directory wasn't created!")
                                               log.write("\nERROR: Results directory wasn't created!\n")
                                             else:
@@ -1505,14 +1538,14 @@ else:
                                                     os.mkdir(os.path.join(param['out'],'results','valid'))
                                                   os.chdir(os.path.join(param['out'],'results','valid'))
                                                 except Exception as e: 
-                                                  log.write("{}\n".format(e))
+                                                  log.write("ERRO:{}\n".format(e))
                                                   print("ERROR: Valid directory wasn't created!")
                                                   log.write("\nERROR: Valid directory wasn't created!\n")
                                                 else:
                                                   try:
                                                     os.system('cp {}/new_scores/{}.hmm {}/results/valid/{}.hmm'.format(param['out'],name,param['out'],name))
                                                   except Exception as e: 
-                                                    log.write("{}\n".format(e))
+                                                    log.write("ERRO:{}\n".format(e))
                                                     print("ERROR: {} file cannot be copied to valid folder!".format(name))
                                                     log.write("ERROR: {} file cannot be copied to valid folder!\n".format(name))
                                                     error.append(name)
@@ -1551,7 +1584,7 @@ else:
                   try:
                     subprocess.check_output("cat {}/results/valid/*.hmm > {}/results/valid/valid.hmm".format(param['out'],param['out']), shell=True)
                   except Exception as e:
-                    log.write("{}\n".format(e))
+                    log.write("ERRO:{}\n".format(e))
                     print("ERROR: All {} valid HMM were not concatenated!".format(len(validated)))
                     log.write("ERROR: All {} valid HMM were not concatenated!\n".format(len(validated)))
                   else:
@@ -1574,12 +1607,12 @@ else:
                         else:
                           invalidated.extend(finalresults[key])
                       except Exception as e:
-                        log.write("{}\n".format(e))
+                        log.write("ERRO:{}\n".format(e))
                       else:
                         pass
                 if invalidated==[]:
-                  print("ERROR: List of invalid HMMs is empty!")
-                  log.write("ERROR: List of invalid HMMs is empty!\n")
+                  print("List of invalid HMMs is empty!")
+                  log.write("List of invalid HMMs is empty!\n")
                 else:
                   name=""
                   o=param['out']
