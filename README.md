@@ -1,7 +1,7 @@
 # model_validator
 model_validator is a tool to validate profile HMMs and adjust their cutoff score.
 
-<img src="/workspaces/model_validator/model_validator_pipeline.jpg" width="700" />
+<img src="model_validator_pipeline.jpg" width="700" />
 
 
 ##   Instalation
