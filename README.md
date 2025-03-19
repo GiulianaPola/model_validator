@@ -1,5 +1,8 @@
 # model_validator
-model_validator is a tool to validate profile HMMs and adjust their cutoff score
+model_validator is a tool to validate profile HMMs and adjust their cutoff score.
+
+<img src="/workspaces/model_validator/model_validator_pipeline.jpg" width="700" />
+
 
 ##   Instalation
 model_validator does not need to be installed. The user should only download the model_validator.py file.
